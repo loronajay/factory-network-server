@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Factory Network Test</title>
+</head>
+<body>
+  <button id="connect">Connect</button>
+  <button id="create">Create Room</button>
+  <input id="roomCode" placeholder="ROOM CODE">
+  <button id="join">Join Room</button>
+  <button id="sendMove">Send Room Message</button>
+  <pre id="log"></pre>
+
+  <script>
+    let ws;
+
+    const log = (...args) => {
+      const el = document.getElementById("log");
+      el.textContent += args.map(x =>
+        typeof x === "string" ? x : JSON.stringify(x, null, 2)
+      ).join(" ") + "\n";
+      console.log(...args);
+    };
+
+    document.getElementById("connect").onclick = () => {
+      ws = new WebSocket("ws://localhost:3000");
+
+      ws.onopen = () => log("connected");
+      ws.onmessage = (e) => log("IN:", JSON.parse(e.data));
+      ws.onerror = (e) => log("ERROR:", e);
+      ws.onclose = (e) => log("CLOSED:", e);
+    };
+
+    document.getElementById("create").onclick = () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log("socket not open");
+        return;
+      }
+
+      ws.send(JSON.stringify({ type: "create_room" }));
+      log("sent create_room");
+    };
+
+    document.getElementById("join").onclick = () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log("socket not open");
+        return;
+      }
+
+      const roomCode = document.getElementById("roomCode").value.trim().toUpperCase();
+      ws.send(JSON.stringify({ type: "join_room", roomCode }));
+      log("sent join_room", roomCode);
+    };
+
+    document.getElementById("sendMove").onclick = () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log("socket not open");
+        return;
+      }
+
+      ws.send(JSON.stringify({
+        type: "room_message",
+        messageType: "move",
+        value: "left"
+      }));
+      log("sent room_message move left");
+    };
+  </script>
+</body>
+</html>
