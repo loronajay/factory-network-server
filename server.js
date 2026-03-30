@@ -16,6 +16,7 @@ const MAX_PLAYERS_PER_ROOM = 2;
 const clients = new Map();      // clientId -> ws
 const clientRooms = new Map();  // clientId -> roomCode
 const rooms = new Map();        // roomCode -> Set(clientId)
+const matchQueues = new Map();  // gameId -> [clientId, ...]
 
 // --- helpers ---
 function makeId(prefix = "") {
@@ -61,6 +62,17 @@ function broadcastToRoom(roomCode, payload, exceptClientId = null) {
 function getPlayerCount(roomCode) {
   const members = rooms.get(roomCode);
   return members ? members.size : 0;
+}
+
+function leaveQueue(clientId) {
+  for (const [gameId, queue] of matchQueues) {
+    const i = queue.indexOf(clientId);
+    if (i !== -1) {
+      queue.splice(i, 1);
+      if (queue.length === 0) matchQueues.delete(gameId);
+      return;
+    }
+  }
 }
 
 function leaveRoom(clientId, reason = "left") {
@@ -151,6 +163,7 @@ app.get("/health", (req, res) => {
     service: "factory-network-server",
     clients: clients.size,
     rooms: rooms.size,
+    queues: Object.fromEntries([...matchQueues.entries()].map(([k, v]) => [k, v.length])),
     maxPlayersPerRoom: MAX_PLAYERS_PER_ROOM
   });
 });
@@ -263,6 +276,40 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (type === "find_match") {
+      const gameId = String(data.gameId || "default");
+      const currentRoom = clientRooms.get(clientId);
+      if (currentRoom) leaveRoom(clientId, "find_match");
+      leaveQueue(clientId);
+
+      const queue = matchQueues.get(gameId) || [];
+      if (queue.length > 0) {
+        const opponentId = queue.shift();
+        if (queue.length === 0) matchQueues.delete(gameId);
+
+        const roomCode = uniqueRoomCode();
+        rooms.set(roomCode, new Set([opponentId, clientId]));
+        clientRooms.set(opponentId, roomCode);
+        clientRooms.set(clientId, roomCode);
+
+        sendToClient(opponentId, { event: "room_joined", roomCode, playerCount: 2 });
+        sendToClient(clientId,   { event: "room_joined", roomCode, playerCount: 2 });
+        sendToClient(opponentId, { event: "player_joined", clientId,             roomCode, playerCount: 2 });
+        sendToClient(clientId,   { event: "player_joined", clientId: opponentId, roomCode, playerCount: 2 });
+      } else {
+        queue.push(clientId);
+        matchQueues.set(gameId, queue);
+        send(ws, { event: "searching" });
+      }
+      return;
+    }
+
+    if (type === "cancel_match") {
+      leaveQueue(clientId);
+      send(ws, { event: "search_cancelled" });
+      return;
+    }
+
     if (type === "ping") {
       send(ws, { event: "pong" });
       return;
@@ -276,11 +323,13 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    leaveQueue(clientId);
     leaveRoom(clientId, "disconnect");
     clients.delete(clientId);
   });
 
   ws.on("error", () => {
+    leaveQueue(clientId);
     leaveRoom(clientId, "error");
     clients.delete(clientId);
   });
