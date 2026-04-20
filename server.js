@@ -19,6 +19,7 @@ const clientRooms = new Map();  // clientId -> roomCode
 const rooms = new Map();        // roomCode -> Set(clientId)
 const clientSides = new Map();  // clientId -> side
 const matchQueues = new Map();  // gameId or gameId:side -> [clientId, ...]
+const clientQueueWatch = new Map(); // clientId -> gameId
 
 // --- helpers ---
 function makeId(prefix = "") {
@@ -78,6 +79,43 @@ function getOpponentMatchSide(side) {
   if (side === "boy") return "girl";
   if (side === "girl") return "boy";
   return null;
+}
+
+function getGameIdFromQueueKey(queueKey) {
+  return String(queueKey || "").split(":")[0];
+}
+
+function getQueueCountsForGame(queues, gameId) {
+  const boyQueue = queues.get(getMatchQueueKey(gameId, "boy")) || [];
+  const girlQueue = queues.get(getMatchQueueKey(gameId, "girl")) || [];
+  return {
+    boy: boyQueue.length,
+    girl: girlQueue.length,
+  };
+}
+
+function shouldReceiveQueueStatus(watchedGames, clientId, gameId) {
+  return watchedGames.get(clientId) === gameId;
+}
+
+function sendQueueStatus(clientId, gameId) {
+  const counts = getQueueCountsForGame(matchQueues, gameId);
+  sendToClient(clientId, {
+    event: "queue_status",
+    gameId,
+    queueCounts: counts,
+    boyWaiting: counts.boy,
+    girlWaiting: counts.girl,
+  });
+}
+
+function broadcastQueueStatus(gameId) {
+  if (!gameId) return;
+
+  for (const clientId of clients.keys()) {
+    if (!shouldReceiveQueueStatus(clientQueueWatch, clientId, gameId)) continue;
+    sendQueueStatus(clientId, gameId);
+  }
 }
 
 function claimQueuedOpponent(queues, gameId, side) {
@@ -162,9 +200,10 @@ function leaveQueue(clientId) {
     if (i !== -1) {
       queue.splice(i, 1);
       if (queue.length === 0) matchQueues.delete(queueKey);
-      return;
+      return queueKey;
     }
   }
+  return null;
 }
 
 function leaveRoom(clientId, reason = "left") {
@@ -384,12 +423,15 @@ wss.on("connection", (ws) => {
     if (type === "find_match") {
       const gameId = String(data.gameId || "default");
       const side = setClientSide(clientId, data.side);
+      clientQueueWatch.set(clientId, gameId);
       const currentRoom = clientRooms.get(clientId);
       if (currentRoom) leaveRoom(clientId, "find_match");
-      leaveQueue(clientId);
+      const removedQueueKey = leaveQueue(clientId);
+      if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
 
       const opponentId = claimQueuedOpponent(matchQueues, gameId, side);
       if (opponentId) {
+        broadcastQueueStatus(gameId);
 
         const roomCode = uniqueRoomCode();
         rooms.set(roomCode, new Set([opponentId, clientId]));
@@ -403,13 +445,22 @@ wss.on("connection", (ws) => {
         emitMatchReady(roomCode);
       } else {
         enqueueMatchClient(matchQueues, gameId, side, clientId);
+        broadcastQueueStatus(gameId);
         send(ws, { event: "searching", gameId, ...(side ? { side } : {}) });
       }
       return;
     }
 
+    if (type === "queue_status") {
+      const gameId = String(data.gameId || "default");
+      clientQueueWatch.set(clientId, gameId);
+      sendQueueStatus(clientId, gameId);
+      return;
+    }
+
     if (type === "cancel_match") {
-      leaveQueue(clientId);
+      const removedQueueKey = leaveQueue(clientId);
+      if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
       send(ws, { event: "search_cancelled" });
       return;
     }
@@ -427,16 +478,20 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    leaveQueue(clientId);
+    const removedQueueKey = leaveQueue(clientId);
+    if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
     leaveRoom(clientId, "disconnect");
     clientSides.delete(clientId);
+    clientQueueWatch.delete(clientId);
     clients.delete(clientId);
   });
 
   ws.on("error", () => {
-    leaveQueue(clientId);
+    const removedQueueKey = leaveQueue(clientId);
+    if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
     leaveRoom(clientId, "error");
     clientSides.delete(clientId);
+    clientQueueWatch.delete(clientId);
     clients.delete(clientId);
   });
 });
@@ -453,4 +508,6 @@ module.exports = {
   claimQueuedOpponent,
   enqueueMatchClient,
   buildMatchReadyMessages,
+  getQueueCountsForGame,
+  shouldReceiveQueueStatus,
 };

@@ -4,6 +4,8 @@ const {
   claimQueuedOpponent,
   enqueueMatchClient,
   buildMatchReadyMessages,
+  getQueueCountsForGame,
+  shouldReceiveQueueStatus,
 } = require("./server.js");
 
 let passed = 0;
@@ -99,6 +101,44 @@ test("legacy queueing still uses the game id key", () => {
   enqueueMatchClient(queues, "other-game", null, "c_a");
 
   assertEq(queues.get("other-game")[0], "c_a");
+});
+
+console.log("\nqueue status");
+
+test("getQueueCountsForGame reports side-aware queue totals for one game", () => {
+  const queues = new Map([
+    ["lovers-lost:boy", ["c_b1", "c_b2"]],
+    ["lovers-lost:girl", ["c_g1"]],
+    ["other-game:boy", ["c_x"]],
+  ]);
+
+  const counts = getQueueCountsForGame(queues, "lovers-lost");
+
+  assertEq(counts.boy, 2);
+  assertEq(counts.girl, 1);
+});
+
+test("getQueueCountsForGame falls back to zero when a side queue is empty or missing", () => {
+  const queues = new Map([
+    ["lovers-lost:girl", ["c_g1"]],
+  ]);
+
+  const counts = getQueueCountsForGame(queues, "lovers-lost");
+
+  assertEq(counts.boy, 0);
+  assertEq(counts.girl, 1);
+});
+
+test("shouldReceiveQueueStatus only targets clients watching the same game", () => {
+  const watchedGames = new Map([
+    ["c_watch", "lovers-lost"],
+    ["c_other", "bird-duty"],
+    ["c_none", null],
+  ]);
+
+  assertEq(shouldReceiveQueueStatus(watchedGames, "c_watch", "lovers-lost"), true);
+  assertEq(shouldReceiveQueueStatus(watchedGames, "c_other", "lovers-lost"), false);
+  assertEq(shouldReceiveQueueStatus(watchedGames, "c_none", "lovers-lost"), false);
 });
 
 console.log("\nbuildMatchReadyMessages");
