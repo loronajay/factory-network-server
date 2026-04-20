@@ -10,7 +10,7 @@ Part of the [Jay Arcade](https://github.com/loronajay/loronajay) ecosystem.
 
 - Assigns each connecting player a unique persistent ID (`c_` + random hex)
 - Room-based grouping (max 2 players) with auto-generated 5-character room codes
-- Automatic 1v1 matchmaking queue — per game ID, first two waiting players are paired
+- Automatic 1v1 matchmaking queue — per game ID by default, with optional side-aware pairing for games that send a side/role
 - Room broadcast and direct peer-to-peer messaging
 - Player join/leave/disconnect lifecycle events broadcast to room members
 - `/health` endpoint showing live client count, room count, and per-game queue depth
@@ -22,7 +22,7 @@ Part of the [Jay Arcade](https://github.com/loronajay/loronajay) ecosystem.
 | `create_room` | client → server | Create a new room, get a room code back |
 | `join_room` | client → server | Join an existing room by code |
 | `leave_room` | client → server | Exit current room |
-| `find_match` | client → server | Enter matchmaking queue for a game |
+| `find_match` | client → server | Enter matchmaking queue for a game; optional `side` enables opposite-side pairing |
 | `cancel_match` | client → server | Exit matchmaking queue |
 | `room_message` | client → server | Broadcast a message to all room members |
 | `direct_message` | client → server | Send a message to a specific client ID |
@@ -41,6 +41,22 @@ Part of the [Jay Arcade](https://github.com/loronajay/loronajay) ecosystem.
 | `searching` | Entered matchmaking queue, waiting for opponent |
 | `search_cancelled` | Left matchmaking queue |
 | `error` | Something went wrong — includes a code and message |
+
+## Side-Aware Matchmaking
+
+`find_match` accepts:
+
+```json
+{ "type": "find_match", "gameId": "lovers-lost", "side": "boy" }
+```
+
+or:
+
+```json
+{ "type": "find_match", "gameId": "lovers-lost", "side": "girl" }
+```
+
+When a valid `side` is included, the server queues that player into a `gameId:side` bucket and only matches them with the opposite side for the same game. If `side` is omitted, the legacy per-game queue behavior is preserved for older clients.
 
 ## Stack
 

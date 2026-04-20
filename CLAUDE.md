@@ -35,7 +35,7 @@ Both live in the same Railway project but are fully independent. Work is never m
 | `clients` | `Map<clientId, ws>` | All connected WebSocket clients |
 | `clientRooms` | `Map<clientId, roomCode>` | Which room each client is in |
 | `rooms` | `Map<roomCode, Set<clientId>>` | Members of each room |
-| `matchQueues` | `Map<gameId, clientId[]>` | Per-game matchmaking queues |
+| `matchQueues` | `Map<queueKey, clientId[]>` | Matchmaking queues keyed by `gameId` or `gameId:side` |
 
 - `MAX_PLAYERS_PER_ROOM = 2`
 - `clientId` format: `c_<8 hex chars>` (e.g. `c_1a2b3c4d`)
@@ -52,7 +52,7 @@ Both live in the same Railway project but are fully independent. Work is never m
 | `leave_room` | — | Leave current room |
 | `room_message` | `messageType`, `value` | Broadcast to all room members (including sender) |
 | `direct_message` | `targetId`, `messageType`, `value` | Send to a specific client by ID |
-| `find_match` | `gameId` | Queue for matchmaking; if opponent waiting, both get a room |
+| `find_match` | `gameId`, optional `side` | Queue for matchmaking; if `side` is present and valid, only the opposite side for that game can match |
 | `cancel_match` | — | Leave matchmaking queue |
 | `ping` | — | Keepalive |
 
@@ -84,6 +84,7 @@ Both live in the same Railway project but are fully independent. Work is never m
 - `leaveRoom(clientId, reason)` — removes from room, fires `player_left` to remaining, `room_left` to leaver; deletes room if empty
 - `joinRoom(clientId, roomCode)` — validates, handles already-in-room, fires `room_joined` + `player_joined`
 - `leaveQueue(clientId)` — removes from whichever match queue the client is in
+- Side-aware matchmaking is opt-in. Older games that only send `gameId` still use the legacy per-game queue.
 
 ## Test Client
 

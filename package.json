@@ -5,7 +5,8 @@
   "description": "Factory Network backend for JayArcade",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node server.test.js"
   },
   "dependencies": {
     "express": "^5.1.0",

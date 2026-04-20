@@ -11,12 +11,14 @@ const wss = new WebSocketServer({ server });
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS_PER_ROOM = 2;
+const MATCH_READY_DELAY_MS = 4000;
 
 // --- in-memory state ---
 const clients = new Map();      // clientId -> ws
 const clientRooms = new Map();  // clientId -> roomCode
 const rooms = new Map();        // roomCode -> Set(clientId)
-const matchQueues = new Map();  // gameId -> [clientId, ...]
+const clientSides = new Map();  // clientId -> side
+const matchQueues = new Map();  // gameId or gameId:side -> [clientId, ...]
 
 // --- helpers ---
 function makeId(prefix = "") {
@@ -64,12 +66,102 @@ function getPlayerCount(roomCode) {
   return members ? members.size : 0;
 }
 
+function normalizeMatchSide(side) {
+  return side === "boy" || side === "girl" ? side : null;
+}
+
+function getMatchQueueKey(gameId, side) {
+  return side ? `${gameId}:${side}` : gameId;
+}
+
+function getOpponentMatchSide(side) {
+  if (side === "boy") return "girl";
+  if (side === "girl") return "boy";
+  return null;
+}
+
+function claimQueuedOpponent(queues, gameId, side) {
+  const opponentSide = getOpponentMatchSide(side);
+  const queueKey = getMatchQueueKey(gameId, opponentSide);
+  const queue = queues.get(queueKey) || [];
+  if (queue.length === 0) return null;
+
+  const opponentId = queue.shift();
+  if (queue.length === 0) queues.delete(queueKey);
+  return opponentId;
+}
+
+function enqueueMatchClient(queues, gameId, side, clientId) {
+  const queueKey = getMatchQueueKey(gameId, side);
+  const queue = queues.get(queueKey) || [];
+  queue.push(clientId);
+  queues.set(queueKey, queue);
+}
+
+function makeMatchSeed() {
+  return crypto.randomBytes(4).readUInt32BE(0);
+}
+
+function buildMatchReadyMessages(clientAId, sideA, clientBId, sideB, serverNow = Date.now(), startDelayMs = MATCH_READY_DELAY_MS, seed = makeMatchSeed()) {
+  const normalizedA = normalizeMatchSide(sideA);
+  const normalizedB = normalizeMatchSide(sideB);
+  if (!normalizedA || !normalizedB || normalizedA === normalizedB) return null;
+
+  const startAt = serverNow + startDelayMs;
+  return [
+    {
+      clientId: clientAId,
+      payload: { event: "match_ready", seed, serverNow, startAt, remoteSide: normalizedB }
+    },
+    {
+      clientId: clientBId,
+      payload: { event: "match_ready", seed, serverNow, startAt, remoteSide: normalizedA }
+    },
+  ];
+}
+
+function setClientSide(clientId, side) {
+  const normalized = normalizeMatchSide(side);
+  if (normalized) clientSides.set(clientId, normalized);
+  else clientSides.delete(clientId);
+  return normalized;
+}
+
+function getRoomMemberIds(roomCode) {
+  const members = rooms.get(roomCode);
+  return members ? [...members] : [];
+}
+
+function sameSideAlreadyInRoom(roomCode, side) {
+  const normalized = normalizeMatchSide(side);
+  if (!normalized) return false;
+  return getRoomMemberIds(roomCode).some(memberId => clientSides.get(memberId) === normalized);
+}
+
+function emitMatchReady(roomCode) {
+  const [clientAId, clientBId] = getRoomMemberIds(roomCode);
+  if (!clientAId || !clientBId) return false;
+
+  const messages = buildMatchReadyMessages(
+    clientAId,
+    clientSides.get(clientAId),
+    clientBId,
+    clientSides.get(clientBId),
+  );
+  if (!messages) return false;
+
+  for (const { clientId, payload } of messages) {
+    sendToClient(clientId, { ...payload, roomCode });
+  }
+  return true;
+}
+
 function leaveQueue(clientId) {
-  for (const [gameId, queue] of matchQueues) {
+  for (const [queueKey, queue] of matchQueues) {
     const i = queue.indexOf(clientId);
     if (i !== -1) {
       queue.splice(i, 1);
-      if (queue.length === 0) matchQueues.delete(gameId);
+      if (queue.length === 0) matchQueues.delete(queueKey);
       return;
     }
   }
@@ -104,7 +196,7 @@ function leaveRoom(clientId, reason = "left") {
   });
 }
 
-function joinRoom(clientId, roomCode) {
+function joinRoom(clientId, roomCode, side) {
   if (!roomCode || !rooms.has(roomCode)) {
     sendToClient(clientId, {
       event: "error",
@@ -135,10 +227,20 @@ function joinRoom(clientId, roomCode) {
     return;
   }
 
+  if (sameSideAlreadyInRoom(roomCode, side)) {
+    sendToClient(clientId, {
+      event: "error",
+      code: "SIDE_CONFLICT",
+      message: "That side is already taken in this room"
+    });
+    return;
+  }
+
   if (currentRoom) {
     leaveRoom(clientId, "switch_room");
   }
 
+  setClientSide(clientId, side);
   members.add(clientId);
   clientRooms.set(clientId, roomCode);
 
@@ -154,6 +256,8 @@ function joinRoom(clientId, roomCode) {
     roomCode,
     playerCount: members.size
   }, clientId);
+
+  emitMatchReady(roomCode);
 }
 
 // --- HTTP routes ---
@@ -201,6 +305,7 @@ wss.on("connection", (ws) => {
     if (type === "create_room") {
       const currentRoom = clientRooms.get(clientId);
       if (currentRoom) leaveRoom(clientId, "create_new_room");
+      setClientSide(clientId, data.side);
 
       const roomCode = uniqueRoomCode();
       const members = new Set([clientId]);
@@ -218,7 +323,7 @@ wss.on("connection", (ws) => {
 
     if (type === "join_room") {
       const roomCode = String(data.roomCode || "").trim().toUpperCase();
-      joinRoom(clientId, roomCode);
+      joinRoom(clientId, roomCode, data.side);
       return;
     }
 
@@ -278,14 +383,13 @@ wss.on("connection", (ws) => {
 
     if (type === "find_match") {
       const gameId = String(data.gameId || "default");
+      const side = setClientSide(clientId, data.side);
       const currentRoom = clientRooms.get(clientId);
       if (currentRoom) leaveRoom(clientId, "find_match");
       leaveQueue(clientId);
 
-      const queue = matchQueues.get(gameId) || [];
-      if (queue.length > 0) {
-        const opponentId = queue.shift();
-        if (queue.length === 0) matchQueues.delete(gameId);
+      const opponentId = claimQueuedOpponent(matchQueues, gameId, side);
+      if (opponentId) {
 
         const roomCode = uniqueRoomCode();
         rooms.set(roomCode, new Set([opponentId, clientId]));
@@ -296,10 +400,10 @@ wss.on("connection", (ws) => {
         sendToClient(clientId,   { event: "room_joined", roomCode, playerCount: 2 });
         sendToClient(opponentId, { event: "player_joined", clientId,             roomCode, playerCount: 2 });
         sendToClient(clientId,   { event: "player_joined", clientId: opponentId, roomCode, playerCount: 2 });
+        emitMatchReady(roomCode);
       } else {
-        queue.push(clientId);
-        matchQueues.set(gameId, queue);
-        send(ws, { event: "searching" });
+        enqueueMatchClient(matchQueues, gameId, side, clientId);
+        send(ws, { event: "searching", gameId, ...(side ? { side } : {}) });
       }
       return;
     }
@@ -325,16 +429,28 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     leaveQueue(clientId);
     leaveRoom(clientId, "disconnect");
+    clientSides.delete(clientId);
     clients.delete(clientId);
   });
 
   ws.on("error", () => {
     leaveQueue(clientId);
     leaveRoom(clientId, "error");
+    clientSides.delete(clientId);
     clients.delete(clientId);
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Factory Network server listening on port ${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Factory Network server listening on port ${PORT}`);
+  });
+}
+
+module.exports = {
+  normalizeMatchSide,
+  getMatchQueueKey,
+  claimQueuedOpponent,
+  enqueueMatchClient,
+  buildMatchReadyMessages,
+};
