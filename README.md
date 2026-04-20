@@ -13,14 +13,18 @@ Part of the [Jay Arcade](https://github.com/loronajay/loronajay) ecosystem.
 - Automatic 1v1 matchmaking queue — per game ID by default, with optional side-aware pairing for games that send a side/role
 - Room broadcast and direct peer-to-peer messaging
 - Player join/leave/disconnect lifecycle events broadcast to room members
+- Server-owned countdown / match start payloads for games that use `match_ready`
+- Live watched queue-count updates for games that request `queue_status`
 - `/health` endpoint showing live client count, room count, and per-game queue depth
 
 ## Message types
 
+`queue_status` lets a client watch one game's live per-side queue totals and receive updates whenever those counts change.
+
 | Type | Direction | Description |
 |---|---|---|
-| `create_room` | client → server | Create a new room, get a room code back |
-| `join_room` | client → server | Join an existing room by code |
+| `create_room` | client → server | Create a new room, optionally carrying a chosen side/role |
+| `join_room` | client → server | Join an existing room by code, optionally carrying a chosen side/role |
 | `leave_room` | client → server | Exit current room |
 | `find_match` | client → server | Enter matchmaking queue for a game; optional `side` enables opposite-side pairing |
 | `cancel_match` | client → server | Exit matchmaking queue |
@@ -37,6 +41,7 @@ Part of the [Jay Arcade](https://github.com/loronajay/loronajay) ecosystem.
 | `room_left` | Confirmed exit from a room |
 | `player_joined` | Another player entered the room |
 | `player_left` | Another player left or disconnected |
+| `match_ready` | Server-owned seed + countdown timing for games that want a synchronized start |
 | `message` | Incoming room broadcast or direct message |
 | `searching` | Entered matchmaking queue, waiting for opponent |
 | `search_cancelled` | Left matchmaking queue |
@@ -57,6 +62,10 @@ or:
 ```
 
 When a valid `side` is included, the server queues that player into a `gameId:side` bucket and only matches them with the opposite side for the same game. If `side` is omitted, the legacy per-game queue behavior is preserved for older clients.
+
+Private rooms may also carry `side` on `create_room` / `join_room`. If a joining player requests a side already occupied in that room, the server returns `SIDE_CONFLICT`.
+
+Games may also send `queue_status` with a `gameId` to receive immediate and change-driven queue totals for that game's watched side buckets. This is what `Lovers Lost` now uses to render the live `boys in the yard` / `girls in the yard` lobby copy.
 
 ## Stack
 
