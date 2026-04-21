@@ -34,9 +34,11 @@ function assertEq(actual, expected, message) {
 
 console.log("\nnormalizeMatchSide");
 
-test("accepts boy and girl only", () => {
+test("accepts registered side pairs, rejects unknown sides", () => {
   assertEq(normalizeMatchSide("boy"), "boy");
   assertEq(normalizeMatchSide("girl"), "girl");
+  assertEq(normalizeMatchSide("alpha"), "alpha");
+  assertEq(normalizeMatchSide("beta"), "beta");
   assertEq(normalizeMatchSide("wizard"), null);
   assertEq(normalizeMatchSide(""), null);
 });

@@ -67,8 +67,15 @@ function getPlayerCount(roomCode) {
   return members ? members.size : 0;
 }
 
+const SIDE_PAIRS = [
+  ["boy", "girl"],
+  ["alpha", "beta"],
+];
+
 function normalizeMatchSide(side) {
-  return side === "boy" || side === "girl" ? side : null;
+  if (!side || typeof side !== "string") return null;
+  const s = side.trim();
+  return SIDE_PAIRS.some(([a, b]) => s === a || s === b) ? s : null;
 }
 
 function getMatchQueueKey(gameId, side) {
@@ -76,8 +83,10 @@ function getMatchQueueKey(gameId, side) {
 }
 
 function getOpponentMatchSide(side) {
-  if (side === "boy") return "girl";
-  if (side === "girl") return "boy";
+  for (const [a, b] of SIDE_PAIRS) {
+    if (side === a) return b;
+    if (side === b) return a;
+  }
   return null;
 }
 
