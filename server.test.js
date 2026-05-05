@@ -15,6 +15,7 @@ const {
   applyEchoDisconnectToMatch,
   serializeEchoMatchState,
   buildLobbyStartedPayload,
+  shouldSendGenericLobbyUpdateAfterLeave,
 } = require("./server.js");
 
 let passed = 0;
@@ -415,6 +416,26 @@ test("buildLobbyStartedPayload includes authoritative Echo Duel snapshot metadat
   assertEq(payload.matchState.network.authorityMode, "server");
   assertEq(payload.matchState.network.syncSeq, 3);
   assertEq(payload.matchState.roomCode, "ECHO7");
+});
+
+test("shouldSendGenericLobbyUpdateAfterLeave skips extra lobby refreshes once echo duel is in match state", () => {
+  assertEq(shouldSendGenericLobbyUpdateAfterLeave({
+    gameId: "echo-duel",
+    echoMatch: { phase: "owner_create_initial" },
+    status: "started",
+  }), false);
+
+  assertEq(shouldSendGenericLobbyUpdateAfterLeave({
+    gameId: "echo-duel",
+    echoMatch: null,
+    status: "open",
+  }), true);
+
+  assertEq(shouldSendGenericLobbyUpdateAfterLeave({
+    gameId: "battleshits",
+    echoMatch: null,
+    status: "open",
+  }), true);
 });
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);

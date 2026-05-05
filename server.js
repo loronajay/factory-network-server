@@ -449,6 +449,11 @@ function isEchoDuelLobby(lobby) {
   return lobby?.gameId === "echo-duel";
 }
 
+function shouldSendGenericLobbyUpdateAfterLeave(lobby) {
+  if (!lobby) return false;
+  return !(isEchoDuelLobby(lobby) && lobby.echoMatch);
+}
+
 function serializeEchoMatchState(match, lobby, now = Date.now()) {
   const snapshot = cloneEchoMatch(match);
   if (snapshot.timer) {
@@ -665,8 +670,10 @@ function leaveLobby(clientId, reason = "left") {
     scheduleEchoMatchTimer(lobby);
   }
 
-  maybeStartLobbyCountdown(lobby);
-  sendLobbyUpdated(lobby);
+  if (shouldSendGenericLobbyUpdateAfterLeave(lobby)) {
+    maybeStartLobbyCountdown(lobby);
+    sendLobbyUpdated(lobby);
+  }
 }
 
 function createLobby(clientId, data = {}, { isPrivate = false } = {}) {
@@ -1723,4 +1730,5 @@ module.exports = {
   applyEchoDisconnectToMatch,
   serializeEchoMatchState,
   buildLobbyStartedPayload,
+  shouldSendGenericLobbyUpdateAfterLeave,
 };
