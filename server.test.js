@@ -6,6 +6,15 @@ const {
   buildMatchReadyMessages,
   getQueueCountsForGame,
   shouldReceiveQueueStatus,
+  isLobbyJoinable,
+  canLobbyStart,
+  canLobbyOwnerUpdateSettings,
+  createEchoDuelMatchState,
+  applyEchoInputToMatch,
+  advanceEchoMatchToTime,
+  applyEchoDisconnectToMatch,
+  serializeEchoMatchState,
+  buildLobbyStartedPayload,
 } = require("./server.js");
 
 let passed = 0;
@@ -161,6 +170,251 @@ test("builds mirrored match_ready payloads with one shared seed and start time",
 
 test("does not build a match_ready payload when both sides match", () => {
   assertEq(buildMatchReadyMessages("c_one", "boy", "c_two", "boy", 1000, 4000, 12345), null);
+});
+
+console.log("\nlobby authority rules");
+
+test("isLobbyJoinable only allows open lobbies below max capacity", () => {
+  assertEq(isLobbyJoinable({
+    status: "open",
+    maxPlayers: 6,
+    members: new Set(["c_1", "c_2"]),
+  }), true);
+
+  assertEq(isLobbyJoinable({
+    status: "countdown",
+    maxPlayers: 6,
+    members: new Set(["c_1", "c_2"]),
+  }), false);
+
+  assertEq(isLobbyJoinable({
+    status: "started",
+    maxPlayers: 6,
+    members: new Set(["c_1", "c_2"]),
+  }), false);
+
+  assertEq(isLobbyJoinable({
+    status: "open",
+    maxPlayers: 2,
+    members: new Set(["c_1", "c_2"]),
+  }), false);
+});
+
+test("canLobbyStart only allows explicit owner-start from an open ready lobby", () => {
+  assertEq(canLobbyStart({
+    status: "open",
+    minPlayers: 2,
+    members: new Set(["c_1", "c_2"]),
+  }), true);
+
+  assertEq(canLobbyStart({
+    status: "open",
+    minPlayers: 3,
+    members: new Set(["c_1", "c_2"]),
+  }), false);
+
+  assertEq(canLobbyStart({
+    status: "countdown",
+    minPlayers: 2,
+    members: new Set(["c_1", "c_2"]),
+  }), false);
+
+  assertEq(canLobbyStart({
+    status: "started",
+    minPlayers: 2,
+    members: new Set(["c_1", "c_2"]),
+  }), false);
+});
+
+test("canLobbyOwnerUpdateSettings locks settings once startup or match flow has begun", () => {
+  assertEq(canLobbyOwnerUpdateSettings({ status: "open" }), true);
+  assertEq(canLobbyOwnerUpdateSettings({ status: "countdown" }), false);
+  assertEq(canLobbyOwnerUpdateSettings({ status: "started" }), false);
+});
+
+console.log("\necho duel authority");
+
+test("createEchoDuelMatchState builds an authoritative starting match from lobby members", () => {
+  const match = createEchoDuelMatchState({
+    roomCode: "ECHO1",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two", "c_three"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+      ["c_three", { displayName: "Charlie" }],
+    ]),
+    seed: 0,
+  }, 1000);
+
+  assertEq(match.phase, "owner_create_initial");
+  assertEq(match.turnId, 1);
+  assertEq(match.phaseId, 1);
+  assertEq(match.players.length, 3);
+  assertEq(match.players[0].name, "Host");
+  assertEq(match.players[1].name, "Bravo");
+});
+
+test("driver finishing the initial 4-input pattern transitions to signal playback", () => {
+  let match = createEchoDuelMatchState({
+    roomCode: "ECHO2",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 0,
+  }, 1000);
+
+  match = applyEchoInputToMatch(match, "c_host", "W", { turnId: 1, phaseId: 1 }, 1000);
+  match = applyEchoInputToMatch(match, "c_host", "A", { turnId: 1, phaseId: 1 }, 1001);
+  match = applyEchoInputToMatch(match, "c_host", "S", { turnId: 1, phaseId: 1 }, 1002);
+  match = applyEchoInputToMatch(match, "c_host", "D", { turnId: 1, phaseId: 1 }, 1003);
+
+  assertEq(match.phase, "signal_playback");
+  assertEq(match.activeSequence.join(""), "WASD");
+  assert(match.playback, "expected playback metadata");
+});
+
+test("advanceEchoMatchToTime moves finished playback into challenger copy", () => {
+  let match = createEchoDuelMatchState({
+    roomCode: "ECHO3",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 0,
+  }, 1000);
+
+  match = applyEchoInputToMatch(match, "c_host", "W", { turnId: 1, phaseId: 1 }, 1000);
+  match = applyEchoInputToMatch(match, "c_host", "A", { turnId: 1, phaseId: 1 }, 1001);
+  match = applyEchoInputToMatch(match, "c_host", "S", { turnId: 1, phaseId: 1 }, 1002);
+  match = applyEchoInputToMatch(match, "c_host", "D", { turnId: 1, phaseId: 1 }, 1003);
+
+  const advanced = advanceEchoMatchToTime(match, match.playback.endsAt + 1);
+
+  assertEq(advanced.phase, "challenger_copy");
+  assert(advanced.copyProgress["c_two"], "expected challenger copy progress");
+});
+
+test("challenger failure awards a letter and resets control to the same driver", () => {
+  let match = createEchoDuelMatchState({
+    roomCode: "ECHO4",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 0,
+  }, 1000);
+
+  match = applyEchoInputToMatch(match, "c_host", "W", { turnId: 1, phaseId: 1 }, 1000);
+  match = applyEchoInputToMatch(match, "c_host", "A", { turnId: 1, phaseId: 1 }, 1001);
+  match = applyEchoInputToMatch(match, "c_host", "S", { turnId: 1, phaseId: 1 }, 1002);
+  match = applyEchoInputToMatch(match, "c_host", "D", { turnId: 1, phaseId: 1 }, 1003);
+  match = advanceEchoMatchToTime(match, match.playback.endsAt + 1);
+  match = applyEchoInputToMatch(match, "c_two", "W", { turnId: match.turnId, phaseId: match.phaseId }, 4000);
+  match = applyEchoInputToMatch(match, "c_two", "W", { turnId: match.turnId, phaseId: match.phaseId }, 4001);
+
+  const challenger = match.players.find((player) => player.clientId === "c_two");
+  const owner = match.players[match.ownerIndex];
+
+  assertEq(match.phase, "owner_create_initial");
+  assertEq(challenger.letters, "S");
+  assertEq(owner.clientId, "c_host");
+  assertEq(match.turnId, 2);
+});
+
+test("1v1 disconnect closes the match without awarding a cheap win", () => {
+  const match = createEchoDuelMatchState({
+    roomCode: "ECHO5",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 0,
+  }, 1000);
+
+  const closed = applyEchoDisconnectToMatch(match, "c_two", 2000);
+
+  assertEq(closed.phase, "match_over");
+  assertEq(closed.winnerId, null);
+  assert(closed.status.includes("closed"), "expected disconnect close message");
+});
+
+test("serializeEchoMatchState exposes authority metadata and countdown-friendly remaining time", () => {
+  let match = createEchoDuelMatchState({
+    roomCode: "ECHO6",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 0,
+  }, 1000);
+
+  match = applyEchoInputToMatch(match, "c_host", "W", { turnId: 1, phaseId: 1 }, 1000);
+  match = applyEchoInputToMatch(match, "c_host", "A", { turnId: 1, phaseId: 1 }, 1001);
+  match = applyEchoInputToMatch(match, "c_host", "S", { turnId: 1, phaseId: 1 }, 1002);
+  match = applyEchoInputToMatch(match, "c_host", "D", { turnId: 1, phaseId: 1 }, 1003);
+
+  const snapshot = serializeEchoMatchState(match, {
+    roomCode: "ECHO6",
+    ownerId: "c_host",
+    echoSyncSeq: 7,
+  }, 1500);
+
+  assertEq(snapshot.mode, "online");
+  assertEq(snapshot.network.authorityMode, "server");
+  assertEq(snapshot.network.syncSeq, 7);
+  assertEq(snapshot.network.roomCode, "ECHO6");
+  assertEq("endsAt" in snapshot.playback, false);
+  assert(snapshot.playback.remainingMs > 0, "expected positive playback remaining time");
+});
+
+test("buildLobbyStartedPayload includes authoritative Echo Duel snapshot metadata", () => {
+  const echoMatch = createEchoDuelMatchState({
+    roomCode: "ECHO7",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 456,
+  }, 2000);
+
+  const payload = buildLobbyStartedPayload({
+    roomCode: "ECHO7",
+    gameId: "echo-duel",
+    seed: 456,
+    ownerId: "c_host",
+    members: new Set(["c_host", "c_two"]),
+    settings: { penaltyWord: "STATIC" },
+    startAt: 6000,
+    echoSyncSeq: 3,
+    echoMatch,
+  }, 2000, "manual");
+
+  assertEq(payload.event, "lobby_started");
+  assertEq(payload.authorityMode, "server");
+  assertEq(payload.matchState.network.authorityMode, "server");
+  assertEq(payload.matchState.network.syncSeq, 3);
+  assertEq(payload.matchState.roomCode, "ECHO7");
 });
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);
