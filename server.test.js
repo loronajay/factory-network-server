@@ -15,6 +15,8 @@ const {
   applyEchoDisconnectToMatch,
   serializeEchoMatchState,
   buildLobbyStartedPayload,
+  cancelEchoLobbyStart,
+  isEchoLobbyMatchPendingStart,
   shouldSendGenericLobbyUpdateAfterLeave,
 } = require("./server.js");
 
@@ -280,6 +282,25 @@ test("driver finishing the initial 4-input pattern transitions to signal playbac
   assert(match.playback, "expected playback metadata");
 });
 
+test("authoritative Echo Duel inputs are ignored before the scheduled match start time", () => {
+  let match = createEchoDuelMatchState({
+    roomCode: "ECHO2B",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 0,
+  }, 5000);
+
+  match = applyEchoInputToMatch(match, "c_host", "W", { turnId: 1, phaseId: 1, inputId: 1 }, 1000);
+
+  assertEq(match.phase, "owner_create_initial");
+  assertEq(match.ownerDraft.length, 0);
+});
+
 test("advanceEchoMatchToTime moves finished playback into challenger copy", () => {
   let match = createEchoDuelMatchState({
     roomCode: "ECHO3",
@@ -334,6 +355,25 @@ test("challenger failure awards a letter and resets control to the same driver",
   assertEq(match.turnId, 2);
 });
 
+test("duplicate authoritative inputs with the same input id do not double-count", () => {
+  let match = createEchoDuelMatchState({
+    roomCode: "ECHO4B",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_host", "c_two"]),
+    memberProfiles: new Map([
+      ["c_host", { displayName: "Host" }],
+      ["c_two", { displayName: "Bravo" }],
+    ]),
+    seed: 0,
+  }, 1000);
+
+  match = applyEchoInputToMatch(match, "c_host", "W", { turnId: 1, phaseId: 1, inputId: 1 }, 1000);
+  match = applyEchoInputToMatch(match, "c_host", "W", { turnId: 1, phaseId: 1, inputId: 1 }, 1001);
+
+  assertEq(match.ownerDraft.join(""), "W");
+});
+
 test("1v1 disconnect closes the match without awarding a cheap win", () => {
   const match = createEchoDuelMatchState({
     roomCode: "ECHO5",
@@ -352,6 +392,27 @@ test("1v1 disconnect closes the match without awarding a cheap win", () => {
   assertEq(closed.phase, "match_over");
   assertEq(closed.winnerId, null);
   assert(closed.status.includes("closed"), "expected disconnect close message");
+});
+
+test("driver disconnect in 3-player matches passes control to the next active player in turn order", () => {
+  const match = createEchoDuelMatchState({
+    roomCode: "ECHO5B",
+    ownerId: "c_host",
+    settings: { penaltyWord: "STATIC" },
+    members: new Set(["c_one", "c_two", "c_three"]),
+    memberProfiles: new Map([
+      ["c_one", { displayName: "Alpha" }],
+      ["c_two", { displayName: "Bravo" }],
+      ["c_three", { displayName: "Charlie" }],
+    ]),
+    seed: 1,
+  }, 1000);
+
+  const next = applyEchoDisconnectToMatch(match, "c_two", 2000);
+
+  assertEq(next.phase, "owner_create_initial");
+  assertEq(next.turnId, 2);
+  assertEq(next.players[next.ownerIndex].clientId, "c_three");
 });
 
 test("serializeEchoMatchState exposes authority metadata and countdown-friendly remaining time", () => {
@@ -416,6 +477,38 @@ test("buildLobbyStartedPayload includes authoritative Echo Duel snapshot metadat
   assertEq(payload.matchState.network.authorityMode, "server");
   assertEq(payload.matchState.network.syncSeq, 3);
   assertEq(payload.matchState.roomCode, "ECHO7");
+});
+
+test("pending Echo Duel starts can be cancelled back to an open lobby before kickoff", () => {
+  const lobby = {
+    roomCode: "ECHO8",
+    gameId: "echo-duel",
+    ownerId: "c_host",
+    status: "started",
+    startAt: 5000,
+    seed: 123,
+    echoSyncSeq: 9,
+    echoMatch: createEchoDuelMatchState({
+      roomCode: "ECHO8",
+      ownerId: "c_host",
+      settings: { penaltyWord: "STATIC" },
+      members: new Set(["c_host", "c_two"]),
+      memberProfiles: new Map([
+        ["c_host", { displayName: "Host" }],
+        ["c_two", { displayName: "Bravo" }],
+      ]),
+      seed: 0,
+    }, 5000),
+    echoMatchTimer: null,
+  };
+
+  assertEq(isEchoLobbyMatchPendingStart(lobby, 1000), true);
+  cancelEchoLobbyStart(lobby);
+  assertEq(lobby.status, "open");
+  assertEq(lobby.startAt, null);
+  assertEq(lobby.seed, null);
+  assertEq(lobby.echoSyncSeq, 0);
+  assertEq(lobby.echoMatch, null);
 });
 
 test("shouldSendGenericLobbyUpdateAfterLeave skips extra lobby refreshes once echo duel is in match state", () => {

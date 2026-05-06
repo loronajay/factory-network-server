@@ -449,6 +449,24 @@ function isEchoDuelLobby(lobby) {
   return lobby?.gameId === "echo-duel";
 }
 
+function isEchoLobbyMatchPendingStart(lobby, now = Date.now()) {
+  return isEchoDuelLobby(lobby)
+    && !!lobby?.echoMatch
+    && lobby?.status === "started"
+    && Number(lobby?.startAt || 0) > now;
+}
+
+function cancelEchoLobbyStart(lobby) {
+  if (!lobby) return lobby;
+  clearEchoMatchTimer(lobby);
+  lobby.echoMatch = null;
+  lobby.echoSyncSeq = 0;
+  lobby.status = "open";
+  lobby.startAt = null;
+  lobby.seed = null;
+  return lobby;
+}
+
 function shouldSendGenericLobbyUpdateAfterLeave(lobby) {
   if (!lobby) return false;
   return !(isEchoDuelLobby(lobby) && lobby.echoMatch);
@@ -456,6 +474,7 @@ function shouldSendGenericLobbyUpdateAfterLeave(lobby) {
 
 function serializeEchoMatchState(match, lobby, now = Date.now()) {
   const snapshot = cloneEchoMatch(match);
+  delete snapshot.inputCursor;
   if (snapshot.timer) {
     snapshot.timer = {
       durationMs: snapshot.timer.durationMs,
@@ -643,6 +662,10 @@ function leaveLobby(clientId, reason = "left") {
 
   if (lobby.ownerId === clientId) {
     lobby.ownerId = [...lobby.members][0];
+  }
+
+  if (isEchoLobbyMatchPendingStart(lobby, Date.now())) {
+    cancelEchoLobbyStart(lobby);
   }
 
   let echoMatchChanged = false;
@@ -950,6 +973,7 @@ function cloneEchoMatch(match) {
     roundResults: (match.roundResults || []).map((result) => ({ ...result })),
     timer: cloneEchoTimer(match.timer),
     playback: cloneEchoPlayback(match.playback),
+    inputCursor: { ...(match.inputCursor || {}) },
   };
 }
 
@@ -1222,18 +1246,25 @@ function createEchoDuelMatchState(lobby, now = Date.now()) {
     status: `${players[ownerIndex]?.name || "Owner"} starts control. Create a 4-input pattern.`,
     timer: null,
     playback: null,
+    inputCursor: {},
     createdAt: now,
   };
 }
 
 function applyEchoInputToMatch(match, clientId, rawInput, meta = null, now = Date.now()) {
+  if (now < Number(match.createdAt || 0)) return match;
+
   const input = String(rawInput || "").toUpperCase();
   if (!ECHO_INPUTS.includes(input)) return match;
+  const inputId = Number(meta?.inputId);
   if (meta) {
     const phaseId = Number(meta.phaseId);
     const turnId = Number(meta.turnId);
     if (!Number.isFinite(phaseId) || !Number.isFinite(turnId)) return match;
     if (phaseId !== Number(match.phaseId || 0) || turnId !== Number(match.turnId || 0)) return match;
+  }
+  if (Number.isFinite(inputId) && inputId > 0 && inputId <= Number(match.inputCursor?.[clientId] || 0)) {
+    return match;
   }
 
   let next = cloneEchoMatch(match);
@@ -1241,10 +1272,17 @@ function applyEchoInputToMatch(match, clientId, rawInput, meta = null, now = Dat
   const actor = next.players[actorIndex];
   const owner = echoGetOwner(next);
   if (!actor || actor.eliminated) return match;
+  const rememberInput = () => {
+    if (Number.isFinite(inputId) && inputId > 0) {
+      next.inputCursor[actor.id] = inputId;
+      next.inputCursor[actor.clientId] = inputId;
+    }
+  };
 
   if (next.phase === ECHO_PHASES.OWNER_CREATE_INITIAL) {
     if (actor.id !== owner?.id && actor.clientId !== owner?.clientId) return match;
     next.ownerDraft.push(input);
+    rememberInput();
     if (next.ownerDraft.length >= next.settings.startingPatternLength) {
       next.activeSequence = [...next.ownerDraft];
       next.ownerDraft = [];
@@ -1258,6 +1296,7 @@ function applyEchoInputToMatch(match, clientId, rawInput, meta = null, now = Dat
   if (next.phase === ECHO_PHASES.OWNER_REPLAY) {
     if (actor.id !== owner?.id && actor.clientId !== owner?.clientId) return match;
     const expected = next.activeSequence[next.ownerReplayIndex];
+    rememberInput();
     if (input !== expected) {
       next.players = echoSetPlayerResult(next.players, owner?.id, "owner-fail");
       const passTo = echoNextActiveIndex(next, next.ownerIndex);
@@ -1291,6 +1330,7 @@ function applyEchoInputToMatch(match, clientId, rawInput, meta = null, now = Dat
     }
 
     next.activeSequence.push(input);
+    rememberInput();
     if (next.activeSequence.length > maxLength) {
       next.activeSequence = next.activeSequence.slice(0, maxLength);
     }
@@ -1310,6 +1350,7 @@ function applyEchoInputToMatch(match, clientId, rawInput, meta = null, now = Dat
     if (!progress || progress.status !== "copying") return match;
 
     const expected = next.activeSequence[progress.index];
+    rememberInput();
     if (input !== expected) {
       return echoMarkChallengerResult(next, actor.id, "fail", now);
     }
@@ -1395,7 +1436,7 @@ function applyEchoDisconnectToMatch(match, clientId, now = Date.now()) {
 
   const leavingWasOwner = leavingIndex === next.ownerIndex;
   if (leavingWasOwner) {
-    const nextOwnerIndex = next.players.findIndex((player) => !player.eliminated);
+    const nextOwnerIndex = echoNextActiveIndex(next, leavingIndex);
     return echoBeginControl(
       next,
       nextOwnerIndex >= 0 ? nextOwnerIndex : 0,
@@ -1730,5 +1771,7 @@ module.exports = {
   applyEchoDisconnectToMatch,
   serializeEchoMatchState,
   buildLobbyStartedPayload,
+  cancelEchoLobbyStart,
+  isEchoLobbyMatchPendingStart,
   shouldSendGenericLobbyUpdateAfterLeave,
 };
