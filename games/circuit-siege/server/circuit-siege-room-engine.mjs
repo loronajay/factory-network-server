@@ -41,11 +41,16 @@ export function createCircuitSiegeRoomEngine({
     },
     startedAt: null,
     endsAt: null,
+    lastUpdatedAt: null,
     result: null,
     matchState: null
   };
 
   function getSnapshot() {
+    const timerMsRemaining = room.phase === "live" && Number.isFinite(room.endsAt)
+      ? Math.max(0, Math.floor(room.endsAt - Number(room.lastUpdatedAt ?? room.startedAt ?? room.endsAt)))
+      : 0;
+
     return {
       roomId: room.roomId,
       roomCode: room.roomCode,
@@ -53,6 +58,7 @@ export function createCircuitSiegeRoomEngine({
       phase: room.phase,
       startedAt: room.startedAt,
       endsAt: room.endsAt,
+      timerMsRemaining,
       result: room.result ? { ...room.result } : null,
       players: snapshotPlayers(room.playersBySide),
       scores: room.matchState ? { ...room.matchState.scores } : { blue: 0, red: 0 },
@@ -114,6 +120,7 @@ export function createCircuitSiegeRoomEngine({
     room.phase = "live";
     room.startedAt = now;
     room.endsAt = now + matchDurationMs;
+    room.lastUpdatedAt = now;
     room.result = null;
     room.matchState = createAuthoritativeMatchState(board, {
       matchId: room.roomId,
@@ -169,6 +176,7 @@ export function createCircuitSiegeRoomEngine({
     }
 
     room.matchState = applied.state;
+    room.lastUpdatedAt = receivedAt;
     maybeFinishForScore();
 
     return {
@@ -188,6 +196,7 @@ export function createCircuitSiegeRoomEngine({
     }
 
     room.phase = "ended";
+    room.lastUpdatedAt = now;
     room.result = createTimerDrawResult();
     if (room.matchState) {
       room.matchState.phase = "ended";
@@ -212,6 +221,7 @@ export function createCircuitSiegeRoomEngine({
     if (room.phase === "live") {
       const winnerSide = otherSide(player.side);
       room.phase = "ended";
+      room.lastUpdatedAt = room.lastUpdatedAt ?? room.startedAt ?? 0;
       room.result = createDisconnectWinResult(winnerSide, player.side, "opponent disconnected");
       if (room.matchState) {
         room.matchState.phase = "ended";

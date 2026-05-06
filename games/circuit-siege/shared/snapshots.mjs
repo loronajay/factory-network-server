@@ -1,3 +1,24 @@
+const DEFAULT_MATCH_DURATION_MS = 5 * 60 * 1000;
+
+function deriveTimerMsRemaining(parsed) {
+  const timerMsRemaining = Number(parsed?.timerMsRemaining);
+  if (Number.isFinite(timerMsRemaining) && timerMsRemaining >= 0) {
+    return Math.floor(timerMsRemaining);
+  }
+
+  const startedAt = Number(parsed?.startedAt);
+  const endsAt = Number(parsed?.endsAt);
+  if (Number.isFinite(startedAt) && Number.isFinite(endsAt) && endsAt >= startedAt) {
+    return Math.floor(Math.max(0, endsAt - startedAt));
+  }
+
+  if (parsed?.phase === "ended") {
+    return 0;
+  }
+
+  return DEFAULT_MATCH_DURATION_MS;
+}
+
 export function serializeMatchSnapshot(snapshot) {
   return JSON.stringify(snapshot || {});
 }
@@ -17,14 +38,9 @@ export function parseMatchSnapshotMessage(value) {
       return null;
     }
 
-    const timerMsRemaining = Number(parsed.timerMsRemaining);
-    if (!Number.isFinite(timerMsRemaining) || timerMsRemaining < 0) {
-      return null;
-    }
-
     return {
       ...parsed,
-      timerMsRemaining: Math.floor(timerMsRemaining)
+      timerMsRemaining: deriveTimerMsRemaining(parsed)
     };
   } catch {
     return null;
