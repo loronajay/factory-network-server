@@ -12,6 +12,7 @@ const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS_PER_ROOM = 2;
 const MATCH_READY_DELAY_MS = 4000;
+const CIRCUIT_SIEGE_GAME_ID = "circuit-siege";
 
 // Parallel lobby protocol for 2-6 player games such as Echo Duel.
 // Existing room/matchmaking protocol stays 1v1 for Lovers Lost/Battleshits.
@@ -62,6 +63,58 @@ function send(ws, payload) {
 function sendToClient(clientId, payload) {
   const ws = clients.get(clientId);
   if (ws) send(ws, payload);
+}
+
+const circuitSiegeBoardRaw = require("./games/circuit-siege/data/authored-board.v1.json");
+let circuitSiegeBridgeRef = null;
+const circuitSiegeBridgePromise = Promise.all([
+  import("./games/circuit-siege/shared/circuit-board.mjs"),
+  import("./games/circuit-siege/server/circuit-siege-server-bridge.mjs"),
+]).then(([boardModule, bridgeModule]) => {
+  const board = boardModule.loadBoardDefinition(circuitSiegeBoardRaw);
+  const bridge = bridgeModule.createCircuitSiegeServerBridge({
+    board,
+    now: () => Date.now(),
+    createRoomCode() {
+      let code = makeRoomCode();
+      while (rooms.has(code) || lobbies.has(code) || circuitSiegeBridgeRef?.hasRoomCode?.(code)) {
+        code = makeRoomCode();
+      }
+      return code;
+    },
+    sendToClient,
+  });
+  circuitSiegeBridgeRef = bridge;
+  return bridge;
+});
+
+async function getCircuitSiegeBridge() {
+  return circuitSiegeBridgePromise;
+}
+
+async function shouldRouteToCircuitSiege(clientId, data) {
+  const type = String(data?.type || "");
+  const gameId = String(data?.gameId || "");
+  const bridge = await getCircuitSiegeBridge();
+
+  if (type === "find_match" || type === "queue_status" || type === "create_room") {
+    return gameId === CIRCUIT_SIEGE_GAME_ID;
+  }
+
+  if (type === "join_room") {
+    if (gameId === CIRCUIT_SIEGE_GAME_ID) {
+      return true;
+    }
+
+    const roomCode = String(data?.roomCode || "").trim().toUpperCase();
+    return roomCode ? bridge.hasRoomCode(roomCode) : false;
+  }
+
+  if (type === "cancel_match" || type === "room_message" || type === "leave_room") {
+    return bridge.ownsClient(clientId);
+  }
+
+  return false;
 }
 
 function broadcastToRoom(roomCode, payload, exceptClientId = null) {
@@ -1485,7 +1538,7 @@ wss.on("connection", (ws) => {
     clientId
   });
 
-  ws.on("message", (raw) => {
+  ws.on("message", async (raw) => {
     let data;
 
     try {
@@ -1500,6 +1553,12 @@ wss.on("connection", (ws) => {
     }
 
     const type = data.type;
+
+    if (await shouldRouteToCircuitSiege(clientId, data)) {
+      const bridge = await getCircuitSiegeBridge();
+      bridge.handleClientMessage(clientId, data);
+      return;
+    }
 
     if (type === "create_lobby") {
       createLobby(clientId, data, { isPrivate: !!data.private });
@@ -1724,20 +1783,30 @@ wss.on("connection", (ws) => {
     });
   });
 
-  ws.on("close", () => {
-    const removedQueueKey = leaveQueue(clientId);
-    if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
-    leaveRoom(clientId, "disconnect");
+  ws.on("close", async () => {
+    const bridge = await getCircuitSiegeBridge();
+    if (bridge.ownsClient(clientId)) {
+      bridge.handleClientDisconnect(clientId, "disconnect");
+    } else {
+      const removedQueueKey = leaveQueue(clientId);
+      if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
+      leaveRoom(clientId, "disconnect");
+    }
     leaveLobby(clientId, "disconnect");
     clientSides.delete(clientId);
     clientQueueWatch.delete(clientId);
     clients.delete(clientId);
   });
 
-  ws.on("error", () => {
-    const removedQueueKey = leaveQueue(clientId);
-    if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
-    leaveRoom(clientId, "error");
+  ws.on("error", async () => {
+    const bridge = await getCircuitSiegeBridge();
+    if (bridge.ownsClient(clientId)) {
+      bridge.handleClientDisconnect(clientId, "error");
+    } else {
+      const removedQueueKey = leaveQueue(clientId);
+      if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
+      leaveRoom(clientId, "error");
+    }
     leaveLobby(clientId, "error");
     clientSides.delete(clientId);
     clientQueueWatch.delete(clientId);
