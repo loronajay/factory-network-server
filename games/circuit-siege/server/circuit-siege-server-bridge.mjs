@@ -5,18 +5,6 @@ import { createCircuitSiegeRoomStore } from "./circuit-siege-room-store.mjs";
 
 const CIRCUIT_SIEGE_GAME_ID = "circuit-siege";
 
-function normalizeBooleanString(value) {
-  return String(value).trim().toLowerCase() === "true";
-}
-
-function safeJsonParse(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
 function createRoomRecord({ roomCode, roomId, engine }) {
   return {
     roomCode,
@@ -83,6 +71,7 @@ export function createCircuitSiegeServerBridge({
         roomCode: room.roomCode,
         playerCount: room.memberClientIds.size
       });
+      maybeStartRoom(room);
     }
 
     return assigned;
@@ -223,22 +212,7 @@ export function createCircuitSiegeServerBridge({
       return;
     }
 
-    if (message.messageType === "player_ready") {
-      room.engine.setPlayerReady(clientId, normalizeBooleanString(message.value));
-      relayRoomMessage(room, clientId, "player_ready", JSON.stringify({ ready: normalizeBooleanString(message.value) }));
-      return;
-    }
-
-    if (message.messageType === "request_start") {
-      const started = maybeStartRoom(room);
-      if (!started.ok) {
-        const errorMessage = started.errorCode === "PLAYERS_NOT_READY"
-          ? "Both players must click Ready Up before the host can start."
-          : started.errorCode === "PLAYERS_MISSING"
-            ? "You need two players in the room before starting."
-            : "Unable to start the match yet.";
-        emit(clientId, { event: "error", code: started.errorCode, message: errorMessage });
-      }
+    if (message.messageType === "player_ready" || message.messageType === "request_start") {
       return;
     }
 

@@ -82,7 +82,7 @@ export function createCircuitSiegeRoomEngine({
       playerId,
       displayName,
       side,
-      ready: false,
+      ready: true,
       connected: true
     };
 
@@ -111,10 +111,6 @@ export function createCircuitSiegeRoomEngine({
 
     if (!blue || !red) {
       return { ok: false, errorCode: "PLAYERS_MISSING" };
-    }
-
-    if (!blue.ready || !red.ready) {
-      return { ok: false, errorCode: "PLAYERS_NOT_READY" };
     }
 
     room.phase = "live";
