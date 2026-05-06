@@ -230,7 +230,15 @@ export function createCircuitSiegeServerBridge({
     }
 
     if (message.messageType === "request_start") {
-      maybeStartRoom(room);
+      const started = maybeStartRoom(room);
+      if (!started.ok) {
+        const errorMessage = started.errorCode === "PLAYERS_NOT_READY"
+          ? "Both players must click Ready Up before the host can start."
+          : started.errorCode === "PLAYERS_MISSING"
+            ? "You need two players in the room before starting."
+            : "Unable to start the match yet.";
+        emit(clientId, { event: "error", code: started.errorCode, message: errorMessage });
+      }
       return;
     }
 
