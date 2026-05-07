@@ -339,9 +339,22 @@ export function createCircuitSiegeServerBridge({
     leaveCurrentRoom(clientId, reason, false);
   }
 
+  function tickActiveRooms() {
+    for (const room of store.listRooms()) {
+      const result = room.engine.tick(now());
+      if (!result.ok) continue;
+
+      broadcastSnapshot(room, result.snapshot);
+      if (result.snapshot.phase === "ended") {
+        store.deleteRoom(room.roomCode);
+      }
+    }
+  }
+
   return {
     handleClientMessage,
     handleClientDisconnect,
+    tickActiveRooms,
     hasRoomCode(roomCode) {
       return store.hasRoomCode(roomCode);
     },

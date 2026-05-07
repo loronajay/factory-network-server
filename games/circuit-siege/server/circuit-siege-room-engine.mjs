@@ -2,7 +2,8 @@ import { createAuthoritativeMatchState, applyPlayerIntent } from "../shared/matc
 import {
   createDisconnectWinResult,
   createScoreWinResult,
-  createTimerDrawResult
+  createTimerDrawResult,
+  createTimerWinResult
 } from "../shared/match-results.mjs";
 
 const DEFAULT_MATCH_DURATION_MS = 5 * 60 * 1000;
@@ -193,7 +194,13 @@ export function createCircuitSiegeRoomEngine({
 
     room.phase = "ended";
     room.lastUpdatedAt = now;
-    room.result = createTimerDrawResult();
+    const blueScore = Number(room.matchState?.scores?.blue || 0);
+    const redScore = Number(room.matchState?.scores?.red || 0);
+    room.result = blueScore === redScore
+      ? createTimerDrawResult()
+      : blueScore > redScore
+        ? createTimerWinResult("blue", "red")
+        : createTimerWinResult("red", "blue");
     if (room.matchState) {
       room.matchState.phase = "ended";
     }

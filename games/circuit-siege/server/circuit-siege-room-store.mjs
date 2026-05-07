@@ -83,6 +83,10 @@ export function createCircuitSiegeRoomStore() {
     }
   }
 
+  function listRooms() {
+    return [...roomByCode.values()];
+  }
+
   return {
     getQueueCounts,
     enqueue,
@@ -96,6 +100,7 @@ export function createCircuitSiegeRoomStore() {
     getRoomCodeForClient,
     isQueuedClient,
     removeClientFromRoom,
-    deleteRoom
+    deleteRoom,
+    listRooms
   };
 }

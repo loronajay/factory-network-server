@@ -92,6 +92,14 @@ async function getCircuitSiegeBridge() {
   return circuitSiegeBridgePromise;
 }
 
+const circuitSiegeHeartbeat = setInterval(async () => {
+  const bridge = await getCircuitSiegeBridge();
+  bridge.tickActiveRooms?.();
+}, 250);
+if (typeof circuitSiegeHeartbeat.unref === "function") {
+  circuitSiegeHeartbeat.unref();
+}
+
 async function shouldRouteToCircuitSiege(clientId, data) {
   const type = String(data?.type || "");
   const gameId = String(data?.gameId || "");
