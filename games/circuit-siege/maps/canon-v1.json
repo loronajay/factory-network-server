@@ -1,0 +1,1291 @@
+{
+    "title":  "Circuit Siege Readability Prototype Board",
+    "version":  "debug-demo-0.4",
+    "cols":  41,
+    "rows":  20,
+    "sideCols":  20,
+    "centerWallColumn":  20,
+    "sourceCountPerSide":  10,
+    "terminalCountPerSide":  10,
+    "damageTerminalsPerSide":  5,
+    "dudTerminalsPerSide":  5,
+    "blueDamageTerminals":  [
+                                1,
+                                3,
+                                6,
+                                8,
+                                10
+                            ],
+    "redDamageTerminals":  [
+                               1,
+                               3,
+                               5,
+                               8,
+                               10
+                           ],
+    "blueSourceToTerminal":  {
+                                 "1":  2,
+                                 "2":  4,
+                                 "3":  1,
+                                 "4":  6,
+                                 "5":  3,
+                                 "6":  8,
+                                 "7":  5,
+                                 "8":  10,
+                                 "9":  7,
+                                 "10":  9
+                             },
+    "notes":  [
+                  "Circuit Siege modular debug demo v0.4.",
+                  "Readability pass: source-to-terminal routes are less tangled.",
+                  "Routes still use non-linear mapping and mirrored layout.",
+                  "Routes use 3 repairs each: hole, refactor, hole.",
+                  "Repair slots are placed away from high-overlap areas where possible.",
+                  "Route hover is debug-only and should be disabled for competitive play."
+              ],
+    "routes":  [
+                   {
+                       "routeId":  "blue_route_01",
+                       "owner":  "blue",
+                       "routeIndex":  1,
+                       "sourceIndex":  1,
+                       "sourceId":  "blue_source_01",
+                       "terminalIndex":  2,
+                       "terminalId":  "blue_terminal_02",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "red_route_10",
+                       "points":  [
+                                      [
+                                          0,
+                                          0
+                                      ],
+                                      [
+                                          0,
+                                          3
+                                      ],
+                                      [
+                                          2,
+                                          3
+                                      ],
+                                      [
+                                          2,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_02",
+                       "owner":  "blue",
+                       "routeIndex":  2,
+                       "sourceIndex":  2,
+                       "sourceId":  "blue_source_02",
+                       "terminalIndex":  4,
+                       "terminalId":  "blue_terminal_04",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "red_route_09",
+                       "points":  [
+                                      [
+                                          2,
+                                          0
+                                      ],
+                                      [
+                                          2,
+                                          5
+                                      ],
+                                      [
+                                          6,
+                                          5
+                                      ],
+                                      [
+                                          6,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_03",
+                       "owner":  "blue",
+                       "routeIndex":  3,
+                       "sourceIndex":  3,
+                       "sourceId":  "blue_source_03",
+                       "terminalIndex":  1,
+                       "terminalId":  "blue_terminal_01",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "red_route_08",
+                       "points":  [
+                                      [
+                                          4,
+                                          0
+                                      ],
+                                      [
+                                          4,
+                                          7
+                                      ],
+                                      [
+                                          0,
+                                          7
+                                      ],
+                                      [
+                                          0,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_04",
+                       "owner":  "blue",
+                       "routeIndex":  4,
+                       "sourceIndex":  4,
+                       "sourceId":  "blue_source_04",
+                       "terminalIndex":  6,
+                       "terminalId":  "blue_terminal_06",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "red_route_07",
+                       "points":  [
+                                      [
+                                          6,
+                                          0
+                                      ],
+                                      [
+                                          6,
+                                          9
+                                      ],
+                                      [
+                                          10,
+                                          9
+                                      ],
+                                      [
+                                          10,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_05",
+                       "owner":  "blue",
+                       "routeIndex":  5,
+                       "sourceIndex":  5,
+                       "sourceId":  "blue_source_05",
+                       "terminalIndex":  3,
+                       "terminalId":  "blue_terminal_03",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "red_route_06",
+                       "points":  [
+                                      [
+                                          8,
+                                          0
+                                      ],
+                                      [
+                                          8,
+                                          11
+                                      ],
+                                      [
+                                          4,
+                                          11
+                                      ],
+                                      [
+                                          4,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_06",
+                       "owner":  "blue",
+                       "routeIndex":  6,
+                       "sourceIndex":  6,
+                       "sourceId":  "blue_source_06",
+                       "terminalIndex":  8,
+                       "terminalId":  "blue_terminal_08",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "red_route_05",
+                       "points":  [
+                                      [
+                                          10,
+                                          0
+                                      ],
+                                      [
+                                          10,
+                                          13
+                                      ],
+                                      [
+                                          14,
+                                          13
+                                      ],
+                                      [
+                                          14,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_07",
+                       "owner":  "blue",
+                       "routeIndex":  7,
+                       "sourceIndex":  7,
+                       "sourceId":  "blue_source_07",
+                       "terminalIndex":  5,
+                       "terminalId":  "blue_terminal_05",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "red_route_04",
+                       "points":  [
+                                      [
+                                          12,
+                                          0
+                                      ],
+                                      [
+                                          12,
+                                          15
+                                      ],
+                                      [
+                                          8,
+                                          15
+                                      ],
+                                      [
+                                          8,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_08",
+                       "owner":  "blue",
+                       "routeIndex":  8,
+                       "sourceIndex":  8,
+                       "sourceId":  "blue_source_08",
+                       "terminalIndex":  10,
+                       "terminalId":  "blue_terminal_10",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "red_route_03",
+                       "points":  [
+                                      [
+                                          14,
+                                          0
+                                      ],
+                                      [
+                                          14,
+                                          17
+                                      ],
+                                      [
+                                          18,
+                                          17
+                                      ],
+                                      [
+                                          18,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_09",
+                       "owner":  "blue",
+                       "routeIndex":  9,
+                       "sourceIndex":  9,
+                       "sourceId":  "blue_source_09",
+                       "terminalIndex":  7,
+                       "terminalId":  "blue_terminal_07",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "red_route_02",
+                       "points":  [
+                                      [
+                                          16,
+                                          0
+                                      ],
+                                      [
+                                          16,
+                                          4
+                                      ],
+                                      [
+                                          12,
+                                          4
+                                      ],
+                                      [
+                                          12,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "blue_route_10",
+                       "owner":  "blue",
+                       "routeIndex":  10,
+                       "sourceIndex":  10,
+                       "sourceId":  "blue_source_10",
+                       "terminalIndex":  9,
+                       "terminalId":  "blue_terminal_09",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "red_route_01",
+                       "points":  [
+                                      [
+                                          18,
+                                          0
+                                      ],
+                                      [
+                                          18,
+                                          16
+                                      ],
+                                      [
+                                          16,
+                                          16
+                                      ],
+                                      [
+                                          16,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_10",
+                       "owner":  "red",
+                       "routeIndex":  10,
+                       "sourceIndex":  10,
+                       "sourceId":  "red_source_10",
+                       "terminalIndex":  9,
+                       "terminalId":  "red_terminal_09",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "blue_route_01",
+                       "points":  [
+                                      [
+                                          40,
+                                          0
+                                      ],
+                                      [
+                                          40,
+                                          3
+                                      ],
+                                      [
+                                          38,
+                                          3
+                                      ],
+                                      [
+                                          38,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_09",
+                       "owner":  "red",
+                       "routeIndex":  9,
+                       "sourceIndex":  9,
+                       "sourceId":  "red_source_09",
+                       "terminalIndex":  7,
+                       "terminalId":  "red_terminal_07",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "blue_route_02",
+                       "points":  [
+                                      [
+                                          38,
+                                          0
+                                      ],
+                                      [
+                                          38,
+                                          5
+                                      ],
+                                      [
+                                          34,
+                                          5
+                                      ],
+                                      [
+                                          34,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_08",
+                       "owner":  "red",
+                       "routeIndex":  8,
+                       "sourceIndex":  8,
+                       "sourceId":  "red_source_08",
+                       "terminalIndex":  10,
+                       "terminalId":  "red_terminal_10",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "blue_route_03",
+                       "points":  [
+                                      [
+                                          36,
+                                          0
+                                      ],
+                                      [
+                                          36,
+                                          7
+                                      ],
+                                      [
+                                          40,
+                                          7
+                                      ],
+                                      [
+                                          40,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_07",
+                       "owner":  "red",
+                       "routeIndex":  7,
+                       "sourceIndex":  7,
+                       "sourceId":  "red_source_07",
+                       "terminalIndex":  5,
+                       "terminalId":  "red_terminal_05",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "blue_route_04",
+                       "points":  [
+                                      [
+                                          34,
+                                          0
+                                      ],
+                                      [
+                                          34,
+                                          9
+                                      ],
+                                      [
+                                          30,
+                                          9
+                                      ],
+                                      [
+                                          30,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_06",
+                       "owner":  "red",
+                       "routeIndex":  6,
+                       "sourceIndex":  6,
+                       "sourceId":  "red_source_06",
+                       "terminalIndex":  8,
+                       "terminalId":  "red_terminal_08",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "blue_route_05",
+                       "points":  [
+                                      [
+                                          32,
+                                          0
+                                      ],
+                                      [
+                                          32,
+                                          11
+                                      ],
+                                      [
+                                          36,
+                                          11
+                                      ],
+                                      [
+                                          36,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_05",
+                       "owner":  "red",
+                       "routeIndex":  5,
+                       "sourceIndex":  5,
+                       "sourceId":  "red_source_05",
+                       "terminalIndex":  3,
+                       "terminalId":  "red_terminal_03",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "blue_route_06",
+                       "points":  [
+                                      [
+                                          30,
+                                          0
+                                      ],
+                                      [
+                                          30,
+                                          13
+                                      ],
+                                      [
+                                          26,
+                                          13
+                                      ],
+                                      [
+                                          26,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_04",
+                       "owner":  "red",
+                       "routeIndex":  4,
+                       "sourceIndex":  4,
+                       "sourceId":  "red_source_04",
+                       "terminalIndex":  6,
+                       "terminalId":  "red_terminal_06",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "blue_route_07",
+                       "points":  [
+                                      [
+                                          28,
+                                          0
+                                      ],
+                                      [
+                                          28,
+                                          15
+                                      ],
+                                      [
+                                          32,
+                                          15
+                                      ],
+                                      [
+                                          32,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_03",
+                       "owner":  "red",
+                       "routeIndex":  3,
+                       "sourceIndex":  3,
+                       "sourceId":  "red_source_03",
+                       "terminalIndex":  1,
+                       "terminalId":  "red_terminal_01",
+                       "terminalType":  "damage",
+                       "mirrorRouteId":  "blue_route_08",
+                       "points":  [
+                                      [
+                                          26,
+                                          0
+                                      ],
+                                      [
+                                          26,
+                                          17
+                                      ],
+                                      [
+                                          22,
+                                          17
+                                      ],
+                                      [
+                                          22,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_02",
+                       "owner":  "red",
+                       "routeIndex":  2,
+                       "sourceIndex":  2,
+                       "sourceId":  "red_source_02",
+                       "terminalIndex":  4,
+                       "terminalId":  "red_terminal_04",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "blue_route_09",
+                       "points":  [
+                                      [
+                                          24,
+                                          0
+                                      ],
+                                      [
+                                          24,
+                                          4
+                                      ],
+                                      [
+                                          28,
+                                          4
+                                      ],
+                                      [
+                                          28,
+                                          19
+                                      ]
+                                  ]
+                   },
+                   {
+                       "routeId":  "red_route_01",
+                       "owner":  "red",
+                       "routeIndex":  1,
+                       "sourceIndex":  1,
+                       "sourceId":  "red_source_01",
+                       "terminalIndex":  2,
+                       "terminalId":  "red_terminal_02",
+                       "terminalType":  "dud",
+                       "mirrorRouteId":  "blue_route_10",
+                       "points":  [
+                                      [
+                                          22,
+                                          0
+                                      ],
+                                      [
+                                          22,
+                                          16
+                                      ],
+                                      [
+                                          24,
+                                          16
+                                      ],
+                                      [
+                                          24,
+                                          19
+                                      ]
+                                  ]
+                   }
+               ],
+    "repairSlots":  [
+                        {
+                            "slotId":  "blue_route_01_rp_1",
+                            "routeId":  "blue_route_01",
+                            "owner":  "blue",
+                            "x":  1,
+                            "y":  3,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_01_rp_2",
+                            "routeId":  "blue_route_01",
+                            "owner":  "blue",
+                            "x":  2,
+                            "y":  11,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_01_rp_3",
+                            "routeId":  "blue_route_01",
+                            "owner":  "blue",
+                            "x":  2,
+                            "y":  15,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_02_rp_1",
+                            "routeId":  "blue_route_02",
+                            "owner":  "blue",
+                            "x":  3,
+                            "y":  5,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_02_rp_2",
+                            "routeId":  "blue_route_02",
+                            "owner":  "blue",
+                            "x":  6,
+                            "y":  13,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_02_rp_3",
+                            "routeId":  "blue_route_02",
+                            "owner":  "blue",
+                            "x":  6,
+                            "y":  16,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_03_rp_1",
+                            "routeId":  "blue_route_03",
+                            "owner":  "blue",
+                            "x":  4,
+                            "y":  6,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_03_rp_2",
+                            "routeId":  "blue_route_03",
+                            "owner":  "blue",
+                            "x":  0,
+                            "y":  9,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_03_rp_3",
+                            "routeId":  "blue_route_03",
+                            "owner":  "blue",
+                            "x":  0,
+                            "y":  15,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_04_rp_1",
+                            "routeId":  "blue_route_04",
+                            "owner":  "blue",
+                            "x":  6,
+                            "y":  3,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_04_rp_2",
+                            "routeId":  "blue_route_04",
+                            "owner":  "blue",
+                            "x":  9,
+                            "y":  9,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_04_rp_3",
+                            "routeId":  "blue_route_04",
+                            "owner":  "blue",
+                            "x":  10,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_05_rp_1",
+                            "routeId":  "blue_route_05",
+                            "owner":  "blue",
+                            "x":  8,
+                            "y":  5,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_05_rp_2",
+                            "routeId":  "blue_route_05",
+                            "owner":  "blue",
+                            "x":  7,
+                            "y":  11,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_05_rp_3",
+                            "routeId":  "blue_route_05",
+                            "owner":  "blue",
+                            "x":  4,
+                            "y":  15,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_06_rp_1",
+                            "routeId":  "blue_route_06",
+                            "owner":  "blue",
+                            "x":  10,
+                            "y":  3,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_06_rp_2",
+                            "routeId":  "blue_route_06",
+                            "owner":  "blue",
+                            "x":  10,
+                            "y":  6,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_06_rp_3",
+                            "routeId":  "blue_route_06",
+                            "owner":  "blue",
+                            "x":  11,
+                            "y":  13,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_07_rp_1",
+                            "routeId":  "blue_route_07",
+                            "owner":  "blue",
+                            "x":  12,
+                            "y":  2,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_07_rp_2",
+                            "routeId":  "blue_route_07",
+                            "owner":  "blue",
+                            "x":  9,
+                            "y":  15,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_07_rp_3",
+                            "routeId":  "blue_route_07",
+                            "owner":  "blue",
+                            "x":  8,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_08_rp_1",
+                            "routeId":  "blue_route_08",
+                            "owner":  "blue",
+                            "x":  14,
+                            "y":  5,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_08_rp_2",
+                            "routeId":  "blue_route_08",
+                            "owner":  "blue",
+                            "x":  14,
+                            "y":  9,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_08_rp_3",
+                            "routeId":  "blue_route_08",
+                            "owner":  "blue",
+                            "x":  17,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "blue_route_09_rp_1",
+                            "routeId":  "blue_route_09",
+                            "owner":  "blue",
+                            "x":  16,
+                            "y":  2,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_09_rp_2",
+                            "routeId":  "blue_route_09",
+                            "owner":  "blue",
+                            "x":  15,
+                            "y":  4,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_09_rp_3",
+                            "routeId":  "blue_route_09",
+                            "owner":  "blue",
+                            "x":  12,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_10_rp_1",
+                            "routeId":  "blue_route_10",
+                            "owner":  "blue",
+                            "x":  18,
+                            "y":  4,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_10_rp_2",
+                            "routeId":  "blue_route_10",
+                            "owner":  "blue",
+                            "x":  18,
+                            "y":  10,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_10_rp_1",
+                            "routeId":  "red_route_10",
+                            "owner":  "red",
+                            "x":  38,
+                            "y":  15,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_10_rp_2",
+                            "routeId":  "red_route_10",
+                            "owner":  "red",
+                            "x":  38,
+                            "y":  11,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_10_rp_3",
+                            "routeId":  "red_route_10",
+                            "owner":  "red",
+                            "x":  39,
+                            "y":  3,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_09_rp_1",
+                            "routeId":  "red_route_09",
+                            "owner":  "red",
+                            "x":  34,
+                            "y":  16,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_09_rp_2",
+                            "routeId":  "red_route_09",
+                            "owner":  "red",
+                            "x":  34,
+                            "y":  13,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_09_rp_3",
+                            "routeId":  "red_route_09",
+                            "owner":  "red",
+                            "x":  37,
+                            "y":  5,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_08_rp_1",
+                            "routeId":  "red_route_08",
+                            "owner":  "red",
+                            "x":  40,
+                            "y":  15,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_08_rp_2",
+                            "routeId":  "red_route_08",
+                            "owner":  "red",
+                            "x":  40,
+                            "y":  9,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_08_rp_3",
+                            "routeId":  "red_route_08",
+                            "owner":  "red",
+                            "x":  36,
+                            "y":  6,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_07_rp_1",
+                            "routeId":  "red_route_07",
+                            "owner":  "red",
+                            "x":  30,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_07_rp_2",
+                            "routeId":  "red_route_07",
+                            "owner":  "red",
+                            "x":  31,
+                            "y":  9,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_07_rp_3",
+                            "routeId":  "red_route_07",
+                            "owner":  "red",
+                            "x":  34,
+                            "y":  3,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_06_rp_1",
+                            "routeId":  "red_route_06",
+                            "owner":  "red",
+                            "x":  36,
+                            "y":  15,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_06_rp_2",
+                            "routeId":  "red_route_06",
+                            "owner":  "red",
+                            "x":  33,
+                            "y":  11,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_06_rp_3",
+                            "routeId":  "red_route_06",
+                            "owner":  "red",
+                            "x":  32,
+                            "y":  5,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_05_rp_1",
+                            "routeId":  "red_route_05",
+                            "owner":  "red",
+                            "x":  29,
+                            "y":  13,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_05_rp_2",
+                            "routeId":  "red_route_05",
+                            "owner":  "red",
+                            "x":  30,
+                            "y":  6,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_05_rp_3",
+                            "routeId":  "red_route_05",
+                            "owner":  "red",
+                            "x":  30,
+                            "y":  3,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_04_rp_1",
+                            "routeId":  "red_route_04",
+                            "owner":  "red",
+                            "x":  32,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_04_rp_2",
+                            "routeId":  "red_route_04",
+                            "owner":  "red",
+                            "x":  31,
+                            "y":  15,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_04_rp_3",
+                            "routeId":  "red_route_04",
+                            "owner":  "red",
+                            "x":  28,
+                            "y":  2,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_03_rp_1",
+                            "routeId":  "red_route_03",
+                            "owner":  "red",
+                            "x":  23,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_03_rp_2",
+                            "routeId":  "red_route_03",
+                            "owner":  "red",
+                            "x":  26,
+                            "y":  9,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_03_rp_3",
+                            "routeId":  "red_route_03",
+                            "owner":  "red",
+                            "x":  26,
+                            "y":  5,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "damage"
+                        },
+                        {
+                            "slotId":  "red_route_02_rp_1",
+                            "routeId":  "red_route_02",
+                            "owner":  "red",
+                            "x":  28,
+                            "y":  17,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_02_rp_2",
+                            "routeId":  "red_route_02",
+                            "owner":  "red",
+                            "x":  25,
+                            "y":  4,
+                            "slotType":  "refactor",
+                            "expectedMask":  "EW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_02_rp_3",
+                            "routeId":  "red_route_02",
+                            "owner":  "red",
+                            "x":  24,
+                            "y":  2,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_01_rp_1",
+                            "routeId":  "red_route_01",
+                            "owner":  "red",
+                            "x":  22,
+                            "y":  16,
+                            "slotType":  "hole",
+                            "expectedMask":  "NE",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_01_rp_2",
+                            "routeId":  "red_route_01",
+                            "owner":  "red",
+                            "x":  22,
+                            "y":  10,
+                            "slotType":  "refactor",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "blue_route_10_rp_3",
+                            "routeId":  "blue_route_10",
+                            "owner":  "blue",
+                            "x":  18,
+                            "y":  16,
+                            "slotType":  "hole",
+                            "expectedMask":  "NW",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        },
+                        {
+                            "slotId":  "red_route_01_rp_3",
+                            "routeId":  "red_route_01",
+                            "owner":  "red",
+                            "x":  22,
+                            "y":  4,
+                            "slotType":  "hole",
+                            "expectedMask":  "NS",
+                            "expectedPiece":  "straight",
+                            "terminalType":  "dud"
+                        }
+                    ],
+    "mapId":  "canon-v1"
+}

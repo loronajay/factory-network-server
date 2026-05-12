@@ -24,7 +24,7 @@ function toPlayerPayload(message) {
 }
 
 export function createCircuitSiegeServerBridge({
-  board,
+  selectBoard,
   now = () => Date.now(),
   createRoomCode = () => Math.random().toString(36).slice(2, 6).toUpperCase(),
   sendToClient
@@ -78,12 +78,17 @@ export function createCircuitSiegeServerBridge({
   }
 
   function createRoomWithPlayers(firstPlayer, secondPlayer = null) {
+    const selectedBoard = typeof selectBoard === "function" ? selectBoard() : null;
+    if (!selectedBoard?.board) {
+      throw new Error("Circuit Siege bridge requires a board selector that returns a board.");
+    }
     const roomCode = createRoomCode();
     const room = createRoomRecord({
       roomCode,
       roomId: `circuit-siege-room-${++roomIndex}`,
       engine: createCircuitSiegeRoomEngine({
-        board,
+        board: selectedBoard.board,
+        boardId: selectedBoard.mapEntry?.mapId || selectedBoard.board?.mapId || null,
         roomId: `circuit-siege-room-${roomIndex}`,
         roomCode
       })
@@ -109,6 +114,7 @@ export function createCircuitSiegeServerBridge({
       if (!player) continue;
       emit(player.clientId, {
         event: "match_ready",
+        mapId: result.snapshot.boardId,
         roomCode: room.roomCode,
         seed: 0,
         remoteSide: side === "blue" ? "red" : "blue",

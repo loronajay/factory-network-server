@@ -65,15 +65,16 @@ function sendToClient(clientId, payload) {
   if (ws) send(ws, payload);
 }
 
-const circuitSiegeBoardRaw = require("./games/circuit-siege/data/authored-board.v1.json");
 let circuitSiegeBridgeRef = null;
 const circuitSiegeBridgePromise = Promise.all([
-  import("./games/circuit-siege/shared/circuit-board.mjs"),
+  import("./games/circuit-siege/server/board-catalog.mjs"),
   import("./games/circuit-siege/server/circuit-siege-server-bridge.mjs"),
-]).then(([boardModule, bridgeModule]) => {
-  const board = boardModule.loadBoardDefinition(circuitSiegeBoardRaw);
+]).then(([catalogModule, bridgeModule]) => {
+  const boardCatalog = catalogModule.createBoardCatalog();
   const bridge = bridgeModule.createCircuitSiegeServerBridge({
-    board,
+    selectBoard() {
+      return boardCatalog.selectBoard();
+    },
     now: () => Date.now(),
     createRoomCode() {
       let code = makeRoomCode();

@@ -1,3 +1,5 @@
+import { deriveRouteCells } from "./board-format.mjs";
+
 function indexById(items, idKey) {
   const map = {};
   for (const item of items) {
@@ -34,10 +36,15 @@ export function loadBoardDefinition(rawBoard) {
     throw new Error("Board definition must include repairSlots.");
   }
 
-  const routesById = indexById(rawBoard.routes, "routeId");
+  const normalizedRoutes = rawBoard.routes.map((route) => ({
+    ...route,
+    cells: deriveRouteCells(route)
+  }));
+
+  const routesById = indexById(normalizedRoutes, "routeId");
   const slotsById = indexById(rawBoard.repairSlots, "slotId");
   const slotsByRouteId = {};
-  const routeOwnershipByCell = buildRouteOwnershipByCell(rawBoard.routes);
+  const routeOwnershipByCell = buildRouteOwnershipByCell(normalizedRoutes);
 
   for (const slot of rawBoard.repairSlots) {
     if (!routesById[slot.routeId]) {
@@ -58,6 +65,7 @@ export function loadBoardDefinition(rawBoard) {
 
   return {
     ...rawBoard,
+    routes: normalizedRoutes,
     routesById,
     slotsById,
     slotsByRouteId

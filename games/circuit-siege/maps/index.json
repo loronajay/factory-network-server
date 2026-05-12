@@ -1,0 +1,11 @@
+{
+  "selectionMode": "random",
+  "defaultMapId": "canon-v1",
+  "maps": [
+    {
+      "mapId": "canon-v1",
+      "title": "Canon V1",
+      "path": "./maps/canon-v1.json"
+    }
+  ]
+}

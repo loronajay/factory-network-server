@@ -25,6 +25,7 @@ function otherSide(side) {
 
 export function createCircuitSiegeRoomEngine({
   board,
+  boardId = null,
   roomId = "circuit-siege-room",
   roomCode = "CS01",
   roomType = "public",
@@ -56,6 +57,7 @@ export function createCircuitSiegeRoomEngine({
       roomId: room.roomId,
       roomCode: room.roomCode,
       roomType: room.roomType,
+      boardId: boardId || board?.mapId || null,
       phase: room.phase,
       startedAt: room.startedAt,
       endsAt: room.endsAt,
