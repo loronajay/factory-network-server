@@ -1,0 +1,24 @@
+{
+  "title": "MAP-01",
+  "mapId": "canon-v1",
+  "version": "2.0",
+  "grid": { "cols": 41, "rows": 20, "sideCols": 20 },
+  "notes": [
+    "Circuit Siege — canonical v1 map.",
+    "Author only blue routes; red side is derived by x-mirroring (redX = 40 - blueX).",
+    "Route index n mirrors route index 11-n. Source and terminal indices mirror the same way.",
+    "Slots: [x, y, slotType] — expectedMask is derived from route geometry at load time."
+  ],
+  "routes": [
+    { "src": 1,  "term": 2,  "type": "dud",    "path": [[0,0],[0,3],[2,3],[2,19]],      "slots": [[1,3,"hole"],[2,11,"refactor"],[2,15,"hole"]] },
+    { "src": 2,  "term": 4,  "type": "dud",    "path": [[2,0],[2,5],[6,5],[6,19]],      "slots": [[3,5,"hole"],[6,13,"refactor"],[6,16,"hole"]] },
+    { "src": 3,  "term": 1,  "type": "damage", "path": [[4,0],[4,7],[0,7],[0,19]],      "slots": [[4,6,"hole"],[0,9,"refactor"],[0,15,"hole"]] },
+    { "src": 4,  "term": 6,  "type": "damage", "path": [[6,0],[6,9],[10,9],[10,19]],    "slots": [[6,3,"hole"],[9,9,"refactor"],[10,17,"hole"]] },
+    { "src": 5,  "term": 3,  "type": "damage", "path": [[8,0],[8,11],[4,11],[4,19]],    "slots": [[8,5,"hole"],[7,11,"refactor"],[4,15,"hole"]] },
+    { "src": 6,  "term": 8,  "type": "damage", "path": [[10,0],[10,13],[14,13],[14,19]],"slots": [[10,3,"hole"],[10,6,"refactor"],[11,13,"hole"]] },
+    { "src": 7,  "term": 5,  "type": "dud",    "path": [[12,0],[12,15],[8,15],[8,19]],  "slots": [[12,2,"hole"],[9,15,"refactor"],[8,17,"hole"]] },
+    { "src": 8,  "term": 10, "type": "damage", "path": [[14,0],[14,17],[18,17],[18,19]],"slots": [[14,5,"hole"],[14,9,"refactor"],[17,17,"hole"]] },
+    { "src": 9,  "term": 7,  "type": "dud",    "path": [[16,0],[16,4],[12,4],[12,19]],  "slots": [[16,2,"hole"],[15,4,"refactor"],[12,17,"hole"]] },
+    { "src": 10, "term": 9,  "type": "dud",    "path": [[18,0],[18,16],[16,16],[16,19]],"slots": [[18,4,"hole"],[18,10,"refactor"],[18,16,"hole"]] }
+  ]
+}

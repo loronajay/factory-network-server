@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadBoardDefinition } from "../shared/circuit-board.mjs";
+import { expandCompactBoard } from "../shared/board-format.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,7 +45,7 @@ export function selectMapEntry(manifest, {
 export function createBoardCatalog({
   gameDirectory = gameRoot,
   manifestRelativePath = path.join("maps", "index.json"),
-  fallbackRelativePath = path.join("maps", "canon-v1.json"),
+  fallbackRelativePath = path.join("maps", "map-01.json"),
   randomFn = Math.random
 } = {}) {
   const manifestPath = path.join(gameDirectory, manifestRelativePath);
@@ -54,7 +55,9 @@ export function createBoardCatalog({
   function loadBoardFromRelativePath(relativePath) {
     if (!boardCache.has(relativePath)) {
       const absolutePath = path.join(gameDirectory, relativePath);
-      boardCache.set(relativePath, loadBoardDefinition(readJson(absolutePath)));
+      const raw = readJson(absolutePath);
+      const verbose = raw.grid ? expandCompactBoard(raw) : raw;
+      boardCache.set(relativePath, loadBoardDefinition(verbose));
     }
     return boardCache.get(relativePath);
   }
