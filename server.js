@@ -144,6 +144,7 @@ function getPlayerCount(roomCode) {
 const SIDE_PAIRS = [
   ["boy", "girl"],
   ["alpha", "beta"],
+  ["p1", "p2"],
 ];
 
 function normalizeMatchSide(side) {
@@ -169,12 +170,12 @@ function getGameIdFromQueueKey(queueKey) {
 }
 
 function getQueueCountsForGame(queues, gameId) {
-  const boyQueue = queues.get(getMatchQueueKey(gameId, "boy")) || [];
-  const girlQueue = queues.get(getMatchQueueKey(gameId, "girl")) || [];
-  return {
-    boy: boyQueue.length,
-    girl: girlQueue.length,
-  };
+  const counts = {};
+  for (const [a, b] of SIDE_PAIRS) {
+    counts[a] = (queues.get(getMatchQueueKey(gameId, a)) || []).length;
+    counts[b] = (queues.get(getMatchQueueKey(gameId, b)) || []).length;
+  }
+  return counts;
 }
 
 function shouldReceiveQueueStatus(watchedGames, clientId, gameId) {
@@ -183,12 +184,16 @@ function shouldReceiveQueueStatus(watchedGames, clientId, gameId) {
 
 function sendQueueStatus(clientId, gameId) {
   const counts = getQueueCountsForGame(matchQueues, gameId);
+  // Flatten all side counts as top-level keys (e.g. boyWaiting, girlWaiting, p1Waiting, p2Waiting)
+  const sideKeys = {};
+  for (const [key, val] of Object.entries(counts)) {
+    sideKeys[`${key}Waiting`] = val;
+  }
   sendToClient(clientId, {
     event: "queue_status",
     gameId,
     queueCounts: counts,
-    boyWaiting: counts.boy,
-    girlWaiting: counts.girl,
+    ...sideKeys,
   });
 }
 
@@ -862,14 +867,24 @@ function joinLobby(clientId, roomCode, identity = null) {
   return lobby;
 }
 
-function findOpenLobby(gameId) {
+function doesLobbyMatchSearch(lobby, gameId, limits = null) {
   const targetGameId = sanitizeLobbyGameId(gameId);
+  if (lobby?.gameId !== targetGameId) return false;
+  if (lobby?.isPrivate) return false;
+  if (!isLobbyJoinable(lobby)) return false;
+  if (limits) {
+    const searchLimits = sanitizeLobbyLimits(limits.minPlayers, limits.maxPlayers);
+    if (lobby.minPlayers !== searchLimits.minPlayers) return false;
+    if (lobby.maxPlayers !== searchLimits.maxPlayers) return false;
+  }
+  return true;
+}
+
+function findOpenLobby(gameId, limits = null) {
   let best = null;
 
   for (const lobby of lobbies.values()) {
-    if (lobby.gameId !== targetGameId) continue;
-    if (lobby.isPrivate) continue;
-    if (!isLobbyJoinable(lobby)) continue;
+    if (!doesLobbyMatchSearch(lobby, gameId, limits)) continue;
     if (!best || lobby.createdAt < best.createdAt) best = lobby;
   }
 
@@ -1581,7 +1596,8 @@ wss.on("connection", (ws) => {
 
     if (type === "find_lobby") {
       const gameId = sanitizeLobbyGameId(data.gameId);
-      const existing = findOpenLobby(gameId);
+      const limits = sanitizeLobbyLimits(data.minPlayers, data.maxPlayers);
+      const existing = findOpenLobby(gameId, limits);
       if (existing) {
         joinLobby(clientId, existing.roomCode, data.identity);
       } else {
@@ -1843,6 +1859,7 @@ module.exports = {
   isLobbyJoinable,
   canLobbyStart,
   canLobbyOwnerUpdateSettings,
+  doesLobbyMatchSearch,
   createEchoDuelMatchState,
   applyEchoInputToMatch,
   advanceEchoMatchToTime,

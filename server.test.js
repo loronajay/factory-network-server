@@ -9,6 +9,7 @@ const {
   isLobbyJoinable,
   canLobbyStart,
   canLobbyOwnerUpdateSettings,
+  doesLobbyMatchSearch,
   createEchoDuelMatchState,
   applyEchoInputToMatch,
   advanceEchoMatchToTime,
@@ -233,6 +234,21 @@ test("canLobbyOwnerUpdateSettings locks settings once startup or match flow has 
   assertEq(canLobbyOwnerUpdateSettings({ status: "open" }), true);
   assertEq(canLobbyOwnerUpdateSettings({ status: "countdown" }), false);
   assertEq(canLobbyOwnerUpdateSettings({ status: "started" }), false);
+});
+
+test("doesLobbyMatchSearch requires matching game and compatible player limits", () => {
+  const lobby = {
+    gameId: "bird-duty",
+    status: "open",
+    isPrivate: false,
+    minPlayers: 2,
+    maxPlayers: 2,
+    members: new Set(["c_host"]),
+  };
+
+  assertEq(doesLobbyMatchSearch(lobby, "bird-duty", { minPlayers: 2, maxPlayers: 2 }), true);
+  assertEq(doesLobbyMatchSearch(lobby, "bird-duty", { minPlayers: 4, maxPlayers: 4 }), false);
+  assertEq(doesLobbyMatchSearch(lobby, "echo-duel", { minPlayers: 2, maxPlayers: 2 }), false);
 });
 
 console.log("\necho duel authority");
