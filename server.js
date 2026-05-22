@@ -1752,7 +1752,17 @@ wss.on("connection", (ws) => {
 
     if (type === "find_match") {
       const gameId = String(data.gameId || "default");
-      const side = setClientSide(clientId, data.side);
+
+      // Symmetric 1v1 games (creature-battle-*): auto-assign sides based on queue
+      // balance so any two searching players always form a complementary pair.
+      let requestedSide = data.side;
+      if (gameId.startsWith("creature-battle-")) {
+        const alphaLen = (matchQueues.get(getMatchQueueKey(gameId, "alpha")) || []).length;
+        const betaLen  = (matchQueues.get(getMatchQueueKey(gameId, "beta"))  || []).length;
+        requestedSide  = alphaLen > betaLen ? "beta" : "alpha";
+      }
+
+      const side = setClientSide(clientId, requestedSide);
       clientQueueWatch.set(clientId, gameId);
       const currentRoom = clientRooms.get(clientId);
       if (currentRoom) leaveRoom(clientId, "find_match");
