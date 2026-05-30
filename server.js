@@ -1753,13 +1753,18 @@ wss.on("connection", (ws) => {
     if (type === "find_match") {
       const gameId = String(data.gameId || "default");
 
-      // Symmetric 1v1 games (creature-battle-*): auto-assign sides based on queue
-      // balance so any two searching players always form a complementary pair.
+      // Symmetric 1v1 games: auto-assign sides based on queue balance so any two
+      // searching players always form a complementary pair. Client-requested side
+      // is ignored for these games — the server picks whichever side is shorter.
       let requestedSide = data.side;
-      if (gameId.startsWith("creature-battle-")) {
+      if (gameId.startsWith("creature-battler-")) {
         const alphaLen = (matchQueues.get(getMatchQueueKey(gameId, "alpha")) || []).length;
         const betaLen  = (matchQueues.get(getMatchQueueKey(gameId, "beta"))  || []).length;
         requestedSide  = alphaLen > betaLen ? "beta" : "alpha";
+      } else if (gameId === "cockpit-swarm" || gameId === "cockpit-swarm-ranked") {
+        const p1Len = (matchQueues.get(getMatchQueueKey(gameId, "p1")) || []).length;
+        const p2Len = (matchQueues.get(getMatchQueueKey(gameId, "p2")) || []).length;
+        requestedSide = p1Len > p2Len ? "p2" : "p1";
       }
 
       const side = setClientSide(clientId, requestedSide);
