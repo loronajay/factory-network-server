@@ -26,6 +26,7 @@ const LOBBY_START_DELAY_MS = 4000;
 const clients = new Map();      // clientId -> ws
 const clientRooms = new Map();  // clientId -> roomCode
 const rooms = new Map();        // roomCode -> Set(clientId)
+const roomGameIds = new Map();  // roomCode -> gameId
 const clientSides = new Map();  // clientId -> side
 const matchQueues = new Map();  // gameId or gameId:side -> [clientId, ...]
 const clientQueueWatch = new Map(); // clientId -> gameId
@@ -169,6 +170,11 @@ function getGameIdFromQueueKey(queueKey) {
   return String(queueKey || "").split(":")[0];
 }
 
+function sanitizeRoomGameId(value) {
+  const gameId = typeof value === "string" ? value.trim() : "";
+  return gameId || "default";
+}
+
 function getQueueCountsForGame(queues, gameId) {
   const counts = {};
   for (const [a, b] of SIDE_PAIRS) {
@@ -228,20 +234,43 @@ function makeMatchSeed() {
   return crypto.randomBytes(4).readUInt32BE(0);
 }
 
-function buildMatchReadyMessages(clientAId, sideA, clientBId, sideB, serverNow = Date.now(), startDelayMs = MATCH_READY_DELAY_MS, seed = makeMatchSeed()) {
+function buildSumoraiStagePlan(seed, rounds = 5) {
+  const stages = ["single", "battlefield", "battlefield", "moving", "none"];
+  const normalizedSeed = Number.isFinite(Number(seed)) ? Number(seed) : 0;
+  return Array.from({ length: rounds }, (_, index) => {
+    const roundNum = index + 1;
+    const stageIndex = Math.abs(Math.floor(normalizedSeed * 9301 + roundNum * 49297)) % stages.length;
+    return stages[stageIndex];
+  });
+}
+
+function buildGameMatchSettings(gameId, seed) {
+  if (gameId !== "sumorai" && gameId !== "sumorai-ranked") return null;
+  const normalizedSeed = Number.isFinite(Number(seed)) ? Number(seed) : 0;
+  return {
+    rulesVersion: "sumorai-online-v1",
+    seed: normalizedSeed,
+    roundTarget: 3,
+    stagePlan: buildSumoraiStagePlan(normalizedSeed, 5),
+  };
+}
+
+function buildMatchReadyMessages(clientAId, sideA, clientBId, sideB, serverNow = Date.now(), startDelayMs = MATCH_READY_DELAY_MS, seed = makeMatchSeed(), gameId = null) {
   const normalizedA = normalizeMatchSide(sideA);
   const normalizedB = normalizeMatchSide(sideB);
   if (!normalizedA || !normalizedB || normalizedA === normalizedB) return null;
 
   const startAt = serverNow + startDelayMs;
+  const matchSettings = buildGameMatchSettings(gameId, seed);
+  const settingsPayload = matchSettings ? { matchSettings } : {};
   return [
     {
       clientId: clientAId,
-      payload: { event: "match_ready", seed, serverNow, startAt, remoteSide: normalizedB }
+      payload: { event: "match_ready", seed, serverNow, startAt, remoteSide: normalizedB, ...settingsPayload }
     },
     {
       clientId: clientBId,
-      payload: { event: "match_ready", seed, serverNow, startAt, remoteSide: normalizedA }
+      payload: { event: "match_ready", seed, serverNow, startAt, remoteSide: normalizedA, ...settingsPayload }
     },
   ];
 }
@@ -267,12 +296,17 @@ function sameSideAlreadyInRoom(roomCode, side) {
 function emitMatchReady(roomCode) {
   const [clientAId, clientBId] = getRoomMemberIds(roomCode);
   if (!clientAId || !clientBId) return false;
+  const gameId = roomGameIds.get(roomCode) || null;
 
   const messages = buildMatchReadyMessages(
     clientAId,
     clientSides.get(clientAId),
     clientBId,
     clientSides.get(clientBId),
+    Date.now(),
+    MATCH_READY_DELAY_MS,
+    makeMatchSeed(),
+    gameId,
   );
   if (!messages) return false;
 
@@ -312,6 +346,7 @@ function leaveRoom(clientId, reason = "left") {
 
     if (members.size === 0) {
       rooms.delete(roomCode);
+      roomGameIds.delete(roomCode);
     }
   }
 
@@ -323,7 +358,7 @@ function leaveRoom(clientId, reason = "left") {
   });
 }
 
-function joinRoom(clientId, roomCode, side) {
+function joinRoom(clientId, roomCode, side, gameId = null) {
   if (!roomCode || !rooms.has(roomCode)) {
     sendToClient(clientId, {
       event: "error",
@@ -344,6 +379,17 @@ function joinRoom(clientId, roomCode, side) {
   }
 
   const members = rooms.get(roomCode);
+  const existingGameId = roomGameIds.get(roomCode) || "default";
+  const requestedGameId = gameId ? sanitizeRoomGameId(gameId) : null;
+
+  if (requestedGameId && existingGameId !== "default" && requestedGameId !== existingGameId) {
+    sendToClient(clientId, {
+      event: "error",
+      code: "ROOM_GAME_MISMATCH",
+      message: "Room belongs to a different game"
+    });
+    return;
+  }
 
   if (members.size >= MAX_PLAYERS_PER_ROOM) {
     sendToClient(clientId, {
@@ -370,6 +416,7 @@ function joinRoom(clientId, roomCode, side) {
   leaveLobby(clientId, "join_room");
 
   setClientSide(clientId, side);
+  if (requestedGameId && existingGameId === "default") roomGameIds.set(roomCode, requestedGameId);
   members.add(clientId);
   clientRooms.set(clientId, roomCode);
 
@@ -1671,6 +1718,7 @@ wss.on("connection", (ws) => {
     }
 
     if (type === "create_room") {
+      const gameId = sanitizeRoomGameId(data.gameId);
       const currentRoom = clientRooms.get(clientId);
       if (currentRoom) leaveRoom(clientId, "create_new_room");
       leaveLobby(clientId, "create_room");
@@ -1679,6 +1727,7 @@ wss.on("connection", (ws) => {
       const roomCode = uniqueRoomCode();
       const members = new Set([clientId]);
       rooms.set(roomCode, members);
+      roomGameIds.set(roomCode, gameId);
       clientRooms.set(clientId, roomCode);
 
       send(ws, {
@@ -1692,7 +1741,7 @@ wss.on("connection", (ws) => {
 
     if (type === "join_room") {
       const roomCode = String(data.roomCode || "").trim().toUpperCase();
-      joinRoom(clientId, roomCode, data.side);
+      joinRoom(clientId, roomCode, data.side, data.gameId);
       return;
     }
 
@@ -1781,6 +1830,7 @@ wss.on("connection", (ws) => {
 
         const roomCode = uniqueRoomCode();
         rooms.set(roomCode, new Set([opponentId, clientId]));
+        roomGameIds.set(roomCode, gameId);
         clientRooms.set(opponentId, roomCode);
         clientRooms.set(clientId, roomCode);
 
@@ -1865,6 +1915,7 @@ module.exports = {
   getMatchQueueKey,
   claimQueuedOpponent,
   enqueueMatchClient,
+  buildGameMatchSettings,
   buildMatchReadyMessages,
   getQueueCountsForGame,
   shouldReceiveQueueStatus,

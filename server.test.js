@@ -3,6 +3,7 @@ const {
   getMatchQueueKey,
   claimQueuedOpponent,
   enqueueMatchClient,
+  buildGameMatchSettings,
   buildMatchReadyMessages,
   getQueueCountsForGame,
   shouldReceiveQueueStatus,
@@ -170,6 +171,25 @@ test("builds mirrored match_ready payloads with one shared seed and start time",
   assertEq(messages[1].payload.startAt, 5000);
   assertEq(messages[0].payload.remoteSide, "girl");
   assertEq(messages[1].payload.remoteSide, "boy");
+});
+
+test("builds server-owned Sumorai match settings with a stage plan", () => {
+  const settings = buildGameMatchSettings("sumorai", 12345);
+
+  assertEq(settings.rulesVersion, "sumorai-online-v1");
+  assertEq(settings.roundTarget, 3);
+  assertEq(settings.seed, 12345);
+  assertEq(settings.stagePlan.length, 5);
+  assertEq(settings.stagePlan[0], "battlefield");
+});
+
+test("includes Sumorai settings in match_ready without changing other games", () => {
+  const sumorai = buildMatchReadyMessages("c_p1", "p1", "c_p2", "p2", 1000, 4000, 12345, "sumorai");
+  const lovers = buildMatchReadyMessages("c_boy", "boy", "c_girl", "girl", 1000, 4000, 12345, "lovers-lost");
+
+  assertEq(sumorai[0].payload.matchSettings.stagePlan.length, 5);
+  assertEq(sumorai[1].payload.matchSettings.stagePlan[0], "battlefield");
+  assertEq("matchSettings" in lovers[0].payload, false);
 });
 
 test("does not build a match_ready payload when both sides match", () => {

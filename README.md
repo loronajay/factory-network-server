@@ -41,7 +41,7 @@ Part of the [Jay Arcade](https://github.com/loronajay/loronajay) ecosystem.
 | `room_left` | Confirmed exit from a room |
 | `player_joined` | Another player entered the room |
 | `player_left` | Another player left or disconnected |
-| `match_ready` | Server-owned seed + countdown timing for games that want a synchronized start |
+| `match_ready` | Server-owned seed + countdown timing, plus game-specific `matchSettings` when required |
 | `message` | Incoming room broadcast or direct message |
 | `searching` | Entered matchmaking queue, waiting for opponent |
 | `search_cancelled` | Left matchmaking queue |
@@ -63,7 +63,9 @@ or:
 
 When a valid `side` is included, the server queues that player into a `gameId:side` bucket and only matches them with the opposite side for the same game. If `side` is omitted, the legacy per-game queue behavior is preserved for older clients.
 
-Private rooms may also carry `side` on `create_room` / `join_room`. If a joining player requests a side already occupied in that room, the server returns `SIDE_CONFLICT`.
+Private rooms may also carry `side` and `gameId` on `create_room` / `join_room`. If a joining player requests a side already occupied in that room, the server returns `SIDE_CONFLICT`.
+
+Sumorai receives server-authored `matchSettings` in `match_ready`, including `roundTarget`, `rulesVersion`, and a full `stagePlan` so both players use the exact same layouts.
 
 Games may also send `queue_status` with a `gameId` to receive immediate and change-driven queue totals for that game's watched side buckets. This is what `Lovers Lost` now uses to render the live `boys in the yard` / `girls in the yard` lobby copy.
 
