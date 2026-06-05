@@ -672,7 +672,10 @@ function broadcastEchoMatchState(lobby, messageType = null) {
 function broadcastBuildBuddyMatchState(lobby, messageType = "match_state") {
   if (!lobby?.buildBuddyMatch) return;
   lobby.buildBuddySyncSeq = Number(lobby.buildBuddySyncSeq || 0) + 1;
-  const snapshot = serializeBuildBuddyMatchState(lobby.buildBuddyMatch, lobby, Date.now());
+  const now = Date.now();
+  const snapshot = messageType === "stage_start"
+    ? serializeBuildBuddyStageStartMessage(lobby.buildBuddyMatch, lobby, now)
+    : serializeBuildBuddyMatchState(lobby.buildBuddyMatch, lobby, now);
   broadcastToLobby(lobby.roomCode, {
     event: "message",
     scope: "lobby",
@@ -1315,6 +1318,20 @@ function serializeBuildBuddyMatchState(match, lobby = {}, now = Date.now()) {
     builderCommands: snapshot.builderCommands.map((command) => ({ ...command })),
   };
   return snapshot;
+}
+
+function serializeBuildBuddyStageStartMessage(match, lobby = {}, now = Date.now()) {
+  return {
+    protocolVersion: 1,
+    runId: `${match.roomCode || lobby?.roomCode || "build_buddy"}:${match.createdAt || 0}`,
+    packId: match.packId,
+    stageId: match.currentStageId,
+    stageIndex: match.stageIndex,
+    roles: { ...match.roles },
+    seed: Number.isFinite(Number(match.seed)) ? Math.max(0, Math.floor(Number(match.seed))) : 0,
+    startAt: now,
+    authorityPlayerId: "server",
+  };
 }
 
 // --- Echo Duel authoritative match helpers ---
@@ -2269,6 +2286,7 @@ module.exports = {
   applyBuildBuddyStageResultToMatch,
   applyBuildBuddyDisconnectToMatch,
   serializeBuildBuddyMatchState,
+  serializeBuildBuddyStageStartMessage,
   createEchoDuelMatchState,
   applyEchoInputToMatch,
   advanceEchoMatchToTime,

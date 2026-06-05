@@ -23,6 +23,7 @@ const {
   applyBuildBuddyStageResultToMatch,
   applyBuildBuddyDisconnectToMatch,
   serializeBuildBuddyMatchState,
+  serializeBuildBuddyStageStartMessage,
   cancelEchoLobbyStart,
   isEchoLobbyMatchPendingStart,
   shouldSendGenericLobbyUpdateAfterLeave,
@@ -705,6 +706,28 @@ test("Build Buddy serialization exposes accepted command cursors for client repl
   assertEq(snapshot.commands.builderCommands.length, 1);
   assertEq(snapshot.commands.runnerInputs[0].seq, 1);
   assertEq(snapshot.commands.builderCommands[0].seq, 2);
+});
+
+test("Build Buddy stage_start serialization matches the client stage-start contract", () => {
+  let match = createBuildBuddyMatchState({
+    roomCode: "BUDDY3D",
+    ownerId: "c_host",
+    settings: { packId: "pack_01" },
+    members: new Set(["c_host", "c_guest"]),
+    seed: 123,
+  }, 1000);
+  match = applyBuildBuddyStageResultToMatch(match, {
+    outcome: "clear",
+    elapsedMs: 42000,
+  }, 5000);
+
+  const stageStart = serializeBuildBuddyStageStartMessage(match, { buildBuddySyncSeq: 5 }, 6200);
+
+  assertEq(stageStart.stageId, "pack_01_stage_02");
+  assertEq(stageStart.stageIndex, 1);
+  assertEq(stageStart.roles.runnerPlayerId, "c_guest");
+  assertEq(stageStart.roles.builderPlayerId, "c_host");
+  assertEq(stageStart.authorityPlayerId, "server");
 });
 
 test("Build Buddy serialization exposes server authority and disconnect closes the run", () => {
