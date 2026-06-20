@@ -6,9 +6,9 @@ export const PORT = process.env.PORT || 3000;
 export const MAX_PLAYERS_PER_ROOM = 2;
 export const MATCH_READY_DELAY_MS = 4000;
 
-export const CIRCUIT_SIEGE_GAME_ID = "circuit-siege";
-export const BUILD_BUDDY_GAME_ID = "build-buddy";
-export const ECHO_DUEL_GAME_ID = "echo-duel";
+// Note: no gameId literals live here (or anywhere in src/). Each game owns its id
+// inside its own games/<id>/ folder; generic code is game-agnostic and consults
+// the registry. See games/registry.mjs and the no-game-literals guardrail test.
 
 // Parallel lobby protocol for 2-6 player games such as Echo Duel.
 // The room/matchmaking protocol stays 1v1 for Lovers Lost / Battleshits.

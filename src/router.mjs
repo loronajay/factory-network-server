@@ -20,10 +20,10 @@ import {
   leaveQueue,
   broadcastQueueStatus,
   getGameIdFromQueueKey,
-  getMatchQueueKey,
   claimQueuedOpponent,
   enqueueMatchClient,
   sendQueueStatus,
+  assignSideForStrategy,
 } from "./matchmaking.mjs";
 import { leaveRoom, joinRoom, broadcastToRoom, emitMatchReady } from "./rooms.mjs";
 import {
@@ -38,8 +38,9 @@ import {
 } from "./lobby.mjs";
 import {
   lobbyGame,
-  shouldRouteToCircuitSiege,
-  getCircuitSiegeBridge,
+  matchmakingStrategy,
+  routeToBridge,
+  bridgeOwningClient,
 } from "../games/registry.mjs";
 
 // Each handler receives { clientId, ws, data }.
@@ -62,7 +63,7 @@ const handlers = {
       createLobby(clientId, {
         ...data,
         gameId,
-        settings: data.settings || { penaltyWord: "ECHO" },
+        settings: data.settings,
       }, { isPrivate: false });
     }
   },
@@ -183,19 +184,9 @@ const handlers = {
   find_match({ clientId, ws, data }) {
     const gameId = String(data.gameId || "default");
 
-    // Symmetric 1v1 games: auto-assign sides based on queue balance so any two
-    // searching players always form a complementary pair. Client-requested side
-    // is ignored for these games — the server picks whichever side is shorter.
-    let requestedSide = data.side;
-    if (gameId.startsWith("creature-battler-")) {
-      const alphaLen = (matchQueues.get(getMatchQueueKey(gameId, "alpha")) || []).length;
-      const betaLen  = (matchQueues.get(getMatchQueueKey(gameId, "beta"))  || []).length;
-      requestedSide  = alphaLen > betaLen ? "beta" : "alpha";
-    } else if (gameId === "cockpit-swarm" || gameId === "cockpit-swarm-ranked") {
-      const p1Len = (matchQueues.get(getMatchQueueKey(gameId, "p1")) || []).length;
-      const p2Len = (matchQueues.get(getMatchQueueKey(gameId, "p2")) || []).length;
-      requestedSide = p1Len > p2Len ? "p2" : "p1";
-    }
+    // The game's matchmaking strategy decides the side (e.g. symmetric games
+    // auto-balance the shorter queue); generic code never names a game.
+    const requestedSide = assignSideForStrategy(matchmakingStrategy(gameId), gameId, data.side, matchQueues);
 
     const side = setClientSide(clientId, requestedSide);
     clientQueueWatch.set(clientId, gameId);
@@ -244,7 +235,7 @@ const handlers = {
   },
 };
 
-export async function handleClientMessage(clientId, ws, raw) {
+export function handleClientMessage(clientId, ws, raw) {
   let data;
   try {
     data = JSON.parse(raw.toString());
@@ -253,8 +244,9 @@ export async function handleClientMessage(clientId, ws, raw) {
     return;
   }
 
-  if (await shouldRouteToCircuitSiege(clientId, data)) {
-    const bridge = await getCircuitSiegeBridge();
+  // Self-owning game bridges (e.g. Circuit Siege) get first claim on a message.
+  const bridge = routeToBridge(clientId, data);
+  if (bridge) {
     bridge.handleClientMessage(clientId, data);
     return;
   }
@@ -267,9 +259,9 @@ export async function handleClientMessage(clientId, ws, raw) {
   handler({ clientId, ws, data });
 }
 
-export async function handleClientDisconnect(clientId, reason) {
-  const bridge = await getCircuitSiegeBridge();
-  if (bridge.ownsClient(clientId)) {
+export function handleClientDisconnect(clientId, reason) {
+  const bridge = bridgeOwningClient(clientId);
+  if (bridge) {
     bridge.handleClientDisconnect(clientId, reason);
   } else {
     const removedQueueKey = leaveQueue(clientId);

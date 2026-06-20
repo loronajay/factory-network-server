@@ -94,34 +94,29 @@ export function makeMatchSeed() {
   return crypto.randomBytes(4).readUInt32BE(0);
 }
 
-function buildSumoraiStagePlan(seed, rounds = 5) {
-  const stages = ["single", "battlefield", "battlefield", "moving", "none"];
-  const normalizedSeed = Number.isFinite(Number(seed)) ? Number(seed) : 0;
-  return Array.from({ length: rounds }, (_, index) => {
-    const roundNum = index + 1;
-    const stageIndex = Math.abs(Math.floor(normalizedSeed * 9301 + roundNum * 49297)) % stages.length;
-    return stages[stageIndex];
-  });
+// Generic side assignment. The per-game strategy (a plain descriptor from the
+// registry) decides the shape; this function never names a game.
+//   "symmetric-balanced" — server picks whichever of two sides has the shorter
+//                          queue, so any two searchers form a complementary pair.
+//   anything else        — honor the client's requested side (legacy/side-pair).
+export function assignSideForStrategy(strategy, gameId, requestedSide, queues) {
+  if (strategy?.strategy === "symmetric-balanced" && Array.isArray(strategy.sides) && strategy.sides.length === 2) {
+    const [a, b] = strategy.sides;
+    const aLen = (queues.get(getMatchQueueKey(gameId, a)) || []).length;
+    const bLen = (queues.get(getMatchQueueKey(gameId, b)) || []).length;
+    return aLen > bLen ? b : a;
+  }
+  return requestedSide;
 }
 
-export function buildGameMatchSettings(gameId, seed) {
-  if (gameId !== "sumorai" && gameId !== "sumorai-ranked") return null;
-  const normalizedSeed = Number.isFinite(Number(seed)) ? Number(seed) : 0;
-  return {
-    rulesVersion: "sumorai-online-v1",
-    seed: normalizedSeed,
-    roundTarget: 3,
-    stagePlan: buildSumoraiStagePlan(normalizedSeed, 5),
-  };
-}
-
-export function buildMatchReadyMessages(clientAId, sideA, clientBId, sideB, serverNow = Date.now(), startDelayMs = MATCH_READY_DELAY_MS, seed = makeMatchSeed(), gameId = null) {
+// `matchSettings` is the deterministic, server-owned config for the game (or null).
+// It is produced by the game's own definition, not by this generic module.
+export function buildMatchReadyMessages(clientAId, sideA, clientBId, sideB, serverNow = Date.now(), startDelayMs = MATCH_READY_DELAY_MS, seed = makeMatchSeed(), matchSettings = null) {
   const normalizedA = normalizeMatchSide(sideA);
   const normalizedB = normalizeMatchSide(sideB);
   if (!normalizedA || !normalizedB || normalizedA === normalizedB) return null;
 
   const startAt = serverNow + startDelayMs;
-  const matchSettings = buildGameMatchSettings(gameId, seed);
   const settingsPayload = matchSettings ? { matchSettings } : {};
   return [
     {

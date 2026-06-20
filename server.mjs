@@ -26,7 +26,7 @@ import {
 } from "./src/state.mjs";
 import { makeId, send } from "./src/transport.mjs";
 import { handleClientMessage, handleClientDisconnect } from "./src/router.mjs";
-import { startCircuitSiegeHeartbeat } from "./games/registry.mjs";
+import { startBridgeHeartbeats } from "./games/registry.mjs";
 
 const app = express();
 app.use(express.json());
@@ -34,7 +34,7 @@ app.use(express.json());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-startCircuitSiegeHeartbeat();
+startBridgeHeartbeats();
 
 // --- HTTP routes ---
 app.get("/health", (req, res) => {

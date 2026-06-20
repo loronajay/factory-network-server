@@ -2,9 +2,10 @@
 // (see src/lobby.mjs) so the generic lobby lifecycle never has to know anything
 // Echo-specific. All side effects (timers, broadcasts, lobby mutation) live here;
 // the pure rules live in echo-duel-match-engine.mjs.
-import { ECHO_DUEL_GAME_ID, lobbies } from "../../../src/state.mjs";
-import { broadcastToLobby, sendLobbyUpdated } from "../../../src/lobby.mjs";
+import { lobbies } from "../../../src/state.mjs";
+import { broadcastToLobby, sendLobbyUpdated } from "../../../src/lobby-bus.mjs";
 import {
+  ECHO_DUEL_GAME_ID,
   ECHO_PHASES,
   createEchoDuelMatchState,
   applyEchoInputToMatch,

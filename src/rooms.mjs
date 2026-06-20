@@ -19,6 +19,7 @@ import {
   setClientSide,
 } from "./matchmaking.mjs";
 import { leaveLobby } from "./lobby.mjs";
+import { matchSettings } from "../games/registry.mjs";
 
 export function broadcastToRoom(roomCode, payload, exceptClientId = null) {
   const members = rooms.get(roomCode);
@@ -50,6 +51,7 @@ export function emitMatchReady(roomCode) {
   const [clientAId, clientBId] = getRoomMemberIds(roomCode);
   if (!clientAId || !clientBId) return false;
   const gameId = roomGameIds.get(roomCode) || null;
+  const seed = makeMatchSeed();
 
   const messages = buildMatchReadyMessages(
     clientAId,
@@ -58,8 +60,8 @@ export function emitMatchReady(roomCode) {
     clientSides.get(clientBId),
     Date.now(),
     MATCH_READY_DELAY_MS,
-    makeMatchSeed(),
-    gameId,
+    seed,
+    matchSettings(gameId, seed),
   );
   if (!messages) return false;
 

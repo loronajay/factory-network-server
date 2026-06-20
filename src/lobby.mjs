@@ -32,13 +32,17 @@ import {
 import { leaveQueue, makeMatchSeed } from "./matchmaking.mjs";
 import { leaveRoom } from "./rooms.mjs";
 import { lobbyGame } from "../games/registry.mjs";
+import {
+  getLobbyMemberIds,
+  broadcastToLobby,
+  buildLobbyPayload,
+  sendLobbyUpdated,
+} from "./lobby-bus.mjs";
 
 export { sanitizeLobbyLimits, lobbyPlayerCount };
-
-export function getLobbyMemberIds(roomCode) {
-  const lobby = lobbies.get(roomCode);
-  return lobby ? [...lobby.members] : [];
-}
+// Re-exported from the leaf bus so existing importers of these from "./lobby.mjs"
+// keep working.
+export { getLobbyMemberIds, broadcastToLobby, buildLobbyPayload, sendLobbyUpdated };
 
 export function isLobbyJoinable(lobby) {
   if (!lobby) return false;
@@ -61,40 +65,6 @@ export function rememberLobbyIdentity(lobby, clientId, identity) {
   if (!sanitized) return;
   if (!(lobby.memberProfiles instanceof Map)) lobby.memberProfiles = new Map();
   lobby.memberProfiles.set(clientId, sanitized);
-}
-
-export function buildLobbyPayload(lobby) {
-  return {
-    roomCode: lobby.roomCode,
-    gameId: lobby.gameId,
-    ownerId: lobby.ownerId,
-    playerCount: lobbyPlayerCount(lobby),
-    minPlayers: lobby.minPlayers,
-    maxPlayers: lobby.maxPlayers,
-    status: lobby.status,
-    isPrivate: !!lobby.isPrivate,
-    settings: lobby.settings,
-    members: lobby?.members ? [...lobby.members] : getLobbyMemberIds(lobby.roomCode),
-    startAt: lobby.startAt || null,
-  };
-}
-
-export function sendLobbyUpdated(lobby) {
-  if (!lobby) return;
-  broadcastToLobby(lobby.roomCode, {
-    event: "lobby_updated",
-    ...buildLobbyPayload(lobby),
-  });
-}
-
-export function broadcastToLobby(roomCode, payload, exceptClientId = null) {
-  const lobby = lobbies.get(roomCode);
-  if (!lobby) return;
-
-  for (const memberId of lobby.members) {
-    if (memberId === exceptClientId) continue;
-    sendToClient(memberId, payload);
-  }
 }
 
 function clearLobbyCountdown(lobby) {

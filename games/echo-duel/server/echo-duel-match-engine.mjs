@@ -3,9 +3,9 @@
 // changed); nothing here touches sockets, timers, or shared server state. The
 // lobby adapter (echo-duel-lobby-game.mjs) owns serialization, broadcasting and
 // timer scheduling.
-import { ECHO_DUEL_GAME_ID } from "../../../src/state.mjs";
 import { sanitizePenaltyWord, sanitizeDisplayName, lobbyPlayerCount } from "../../../src/util.mjs";
 
+export const ECHO_DUEL_GAME_ID = "echo-duel";
 export const ECHO_INPUTS = ["W", "A", "S", "D"];
 export const ECHO_PHASES = {
   OWNER_CREATE_INITIAL: "owner_create_initial",

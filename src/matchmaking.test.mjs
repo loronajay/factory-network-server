@@ -3,7 +3,7 @@ import {
   getMatchQueueKey,
   claimQueuedOpponent,
   enqueueMatchClient,
-  buildGameMatchSettings,
+  assignSideForStrategy,
   buildMatchReadyMessages,
   getQueueCountsForGame,
   shouldReceiveQueueStatus,
@@ -160,27 +160,31 @@ test("builds mirrored match_ready payloads with one shared seed and start time",
   assertEq(messages[1].payload.remoteSide, "boy");
 });
 
-test("builds server-owned Sumorai match settings with a stage plan", () => {
-  const settings = buildGameMatchSettings("sumorai", 12345);
+test("includes server-provided match settings when present, omits them when null", () => {
+  const withSettings = buildMatchReadyMessages("c_p1", "p1", "c_p2", "p2", 1000, 4000, 12345, { rulesVersion: "x", roundTarget: 3 });
+  const without = buildMatchReadyMessages("c_boy", "boy", "c_girl", "girl", 1000, 4000, 12345, null);
 
-  assertEq(settings.rulesVersion, "sumorai-online-v1");
-  assertEq(settings.roundTarget, 3);
-  assertEq(settings.seed, 12345);
-  assertEq(settings.stagePlan.length, 5);
-  assertEq(settings.stagePlan[0], "battlefield");
-});
-
-test("includes Sumorai settings in match_ready without changing other games", () => {
-  const sumorai = buildMatchReadyMessages("c_p1", "p1", "c_p2", "p2", 1000, 4000, 12345, "sumorai");
-  const lovers = buildMatchReadyMessages("c_boy", "boy", "c_girl", "girl", 1000, 4000, 12345, "lovers-lost");
-
-  assertEq(sumorai[0].payload.matchSettings.stagePlan.length, 5);
-  assertEq(sumorai[1].payload.matchSettings.stagePlan[0], "battlefield");
-  assertEq("matchSettings" in lovers[0].payload, false);
+  assertEq(withSettings[0].payload.matchSettings.rulesVersion, "x");
+  assertEq(withSettings[1].payload.matchSettings.roundTarget, 3);
+  assertEq("matchSettings" in without[0].payload, false);
 });
 
 test("does not build a match_ready payload when both sides match", () => {
   assertEq(buildMatchReadyMessages("c_one", "boy", "c_two", "boy", 1000, 4000, 12345), null);
+});
+
+console.log("\nassignSideForStrategy");
+
+test("symmetric-balanced assigns the shorter side; side-pair honors the request", () => {
+  const symmetric = { strategy: "symmetric-balanced", sides: ["alpha", "beta"] };
+  // alpha queue longer -> assign beta; tie/empty -> assign first side
+  const lopsided = new Map([["cb-x:alpha", ["c_a1", "c_a2"]], ["cb-x:beta", ["c_b1"]]]);
+  assertEq(assignSideForStrategy(symmetric, "cb-x", "ignored", lopsided), "beta");
+  assertEq(assignSideForStrategy(symmetric, "cb-x", "ignored", new Map()), "alpha");
+
+  // default / side-pair strategy passes the requested side straight through
+  assertEq(assignSideForStrategy({ strategy: "side-pair" }, "lovers-lost", "boy", new Map()), "boy");
+  assertEq(assignSideForStrategy(undefined, "lovers-lost", "girl", new Map()), "girl");
 });
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);

@@ -39,28 +39,61 @@ to live in one 2,300-line file are now split:
 | `src/state.mjs` | The single in-memory store (all Maps + constants) |
 | `src/transport.mjs` | `send`, `sendToClient`, id + room-code helpers |
 | `src/util.mjs` | Pure sanitizers/helpers (no state dependency) |
-| `src/matchmaking.mjs` | Queues, sides, `match_ready`, `queue_status` |
+| `src/matchmaking.mjs` | Queues, side strategies, `match_ready`, `queue_status` |
 | `src/rooms.mjs` | 1v1 room lifecycle (join/leave/broadcast) |
+| `src/lobby-bus.mjs` | Lobby messaging primitives (leaf: broadcast/payload) |
 | `src/lobby.mjs` | Generic v2 lobby lifecycle (game-agnostic) |
 | `src/router.mjs` | WebSocket message dispatch table |
-| `games/registry.mjs` | Maps gameId → game integration |
-| `games/<game>/server/*` | Per-game server logic |
+| `games/registry.mjs` | The single index of game definitions |
+| `games/<id>/server/<id>.game.mjs` | One uniform **Game Definition** per game |
 
-**Two game integration styles** (both fronted by `games/registry.mjs`):
-1. **Self-owning bridge** — `circuit-siege` owns its own rooms/queues and
-   intercepts messages (`shouldRouteToCircuitSiege` / `getCircuitSiegeBridge`).
-2. **Lobby game-module** — `echo-duel` and `build-buddy` plug into the generic
-   lobby via the interface documented at the top of `src/lobby.mjs`. Each game has
-   a pure `*-match-engine.mjs` (state transitions + serializers) and a
-   `*-lobby-game.mjs` adapter (timers, broadcasting, lobby wiring).
+### One model: Game Definitions
 
-`src/lobby.mjs` is intentionally free of game-specific identifiers; anything
-game-specific is delegated to the module returned by `lobbyGame(gameId)`.
+**Generic code (everything in `src/`) never names a specific game.** It asks the
+registry. Each game is described by a uniform definition at
+`games/<id>/server/<id>.game.mjs`:
 
-Note: the `src/*` and `games/*` adapters import each other (rooms↔lobby,
-lobby↔registry↔adapters). These cycles are safe because the shared bindings are
-only used inside function bodies; the registry's lobby-game map is built lazily
-to avoid touching adapter bindings during their temporal dead zone.
+```js
+export const definition = {
+  id,            // exact gameId  (or)
+  matches,       // (gameId) => boolean — for families/variants (prefixes, -ranked)
+  matchmaking,   // { strategy: "side-pair" | "symmetric-balanced" | "lobby" | "self-owned", sides? }
+  matchSettings, // optional (seed) => deterministic server config object | null
+  lobbyGame,     // optional — lobby game-module (lobby-based games)
+  bridge,        // optional — { create(ctx), shouldRoute(clientId, data, instance) }
+};
+```
+
+The registry exposes `lobbyGame(gameId)`, `matchmakingStrategy(gameId)`,
+`matchSettings(gameId, seed)`, and the bridge manager (`routeToBridge`,
+`bridgeOwningClient`, `startBridgeHeartbeats`). **An unregistered gameId falls back
+to plain relay + the default `side-pair` strategy** — that's how the many
+relay-only games (lovers-lost, battleshits, …) work with zero server code.
+
+A game's *folder* holds whatever its definition needs: lobby-based games
+(`echo-duel`, `build-buddy`) have a pure `*-match-engine.mjs` + a `*-lobby-game.mjs`
+adapter; the self-owning `circuit-siege` has its bridge; `sumorai` has only a
+seeded stage-plan; `creature-battler` / `cockpit-swarm` are just a strategy
+descriptor.
+
+### Adding a game (the one path)
+
+1. Create `games/<id>/server/<id>.game.mjs` exporting a `definition`.
+2. Register it in the `import`s + `allDefinitions()` array in `games/registry.mjs`.
+3. Add a `.test.mjs` for any logic; if there's none, `games/registry.test.mjs`
+   already covers strategy/settings resolution.
+
+Do **not** add a gameId branch to anything in `src/`. The
+`src/no-game-literals.test.mjs` guardrail fails the build if a gameId literal
+appears in generic code — that's intentional, to stop special-cases from creeping
+back in across edits.
+
+### Import cycles
+
+`rooms ↔ lobby` and `lobby → registry` reference each other only inside function
+bodies (safe under ESM). Game adapters import the **leaf** `src/lobby-bus.mjs`
+(not `src/lobby.mjs`) so the registry is *not* part of an import cycle; the
+registry's definition list is still built lazily as cheap insurance.
 
 ## In-Memory State
 
@@ -125,13 +158,13 @@ All of the following live in `src/state.mjs` and are imported wherever needed.
 - `joinRoom(clientId, roomCode)` — validates, handles already-in-room, fires `room_joined` + `player_joined` (`src/rooms.mjs`)
 - `leaveQueue(clientId)` — removes from whichever match queue the client is in (`src/matchmaking.mjs`)
 - Side-aware matchmaking is opt-in. Older games that only send `gameId` still use the legacy per-game queue.
-- `buildMatchReadyMessages(...)` — builds the mirrored `match_ready` payloads that share one seed and one countdown start time (`src/matchmaking.mjs`)
-- Adding a new lobby-based game: implement the lobby game-module interface (see `src/lobby.mjs`) in a `games/<game>/server/*-lobby-game.mjs` and register it in `games/registry.mjs` — do **not** add game branches to `src/lobby.mjs`.
+- `buildMatchReadyMessages(...)` — builds the mirrored `match_ready` payloads that share one seed and one countdown start time; takes the game's server-owned `matchSettings` object (or null) as its last argument (`src/matchmaking.mjs`)
+- Adding/changing a game: see **Adding a game** above. Generic `src/` code must stay game-agnostic (the `no-game-literals` guardrail enforces it).
 - Current handoff note: the countdown/start ownership pass is done; future work for strict-timing games should focus on richer replicated state or server assistance, not on reworking matchmaking again
 
 ## Tests
 
-`npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`, and the three `games/circuit-siege/*.test.mjs` suites. Pure match engines and helpers are unit tested directly (no socket needed); each test file is self-contained and exits non-zero on failure.
+`npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `src/no-game-literals.test.mjs` (the game-agnostic guardrail), `games/registry.test.mjs` (strategy/settings/lobby resolution), `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`, and the three `games/circuit-siege/*.test.mjs` suites. Pure match engines and helpers are unit tested directly (no socket needed); each test file is self-contained and exits non-zero on failure.
 
 Queue status note: `queue_status` watchers now receive immediate and change-driven updates with `queueCounts`, `boyWaiting`, and `girlWaiting` for the requested game.
 

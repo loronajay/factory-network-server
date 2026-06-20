@@ -1,9 +1,9 @@
 // Build Buddy authoritative match engine — pure state transitions + pure
 // serializers. Server owns stage results and role swaps; clients may not publish
 // authoritative state. The lobby adapter handles broadcasting and wiring.
-import { BUILD_BUDDY_GAME_ID } from "../../../src/state.mjs";
 import { sanitizeDisplayName } from "../../../src/util.mjs";
 
+export const BUILD_BUDDY_GAME_ID = "build-buddy";
 export const BUILD_BUDDY_PHASES = {
   STAGE_PLAY: "stage_play",
   RUN_COMPLETE: "run_complete",

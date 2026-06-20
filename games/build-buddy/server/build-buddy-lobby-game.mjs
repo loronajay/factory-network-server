@@ -1,9 +1,9 @@
 // Build Buddy lobby-game adapter. Implements the lobby game-module interface
 // (see src/lobby.mjs). Build Buddy public matches are server-authoritative:
 // clients may not publish authoritative state or results.
-import { BUILD_BUDDY_GAME_ID } from "../../../src/state.mjs";
-import { broadcastToLobby, sendLobbyUpdated } from "../../../src/lobby.mjs";
+import { broadcastToLobby, sendLobbyUpdated } from "../../../src/lobby-bus.mjs";
 import {
+  BUILD_BUDDY_GAME_ID,
   BUILD_BUDDY_PHASES,
   createBuildBuddyMatchState,
   applyBuildBuddyInputToMatch,
