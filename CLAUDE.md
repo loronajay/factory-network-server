@@ -1,6 +1,6 @@
 # factory-network-server
 
-Real-time WebSocket multiplayer backend for **JayArcade** games. Handles rooms, matchmaking, and message relay. Single-file Node.js server (`server.js`).
+Real-time WebSocket multiplayer backend for **JayArcade** games. Handles rooms, matchmaking, and message relay. Modular Node.js (ESM) server; `server.mjs` is a thin bootstrap that delegates to focused modules under `src/` and `games/`.
 
 ## Scope
 
@@ -23,12 +23,48 @@ Both live in the same Railway project but are fully independent. Work is never m
 - Local dev: port 3000
 
 ## Stack
-- **Node.js** + **Express 5** + **ws** (WebSocket library)
+- **Node.js** (ESM, `.mjs`) + **Express 5** + **ws** (WebSocket library)
 - No database — all state is in-memory, intentionally ephemeral
-- Entry point: `server.js`
+- Entry point: `server.mjs` (bootstrap only)
 - Start: `npm start`
 
+## Architecture / Module Map
+
+`server.mjs` wires Express + ws and delegates everything. The concerns that used
+to live in one 2,300-line file are now split:
+
+| Path | Responsibility |
+|---|---|
+| `server.mjs` | Bootstrap: HTTP routes, WS connection wiring, `listen` |
+| `src/state.mjs` | The single in-memory store (all Maps + constants) |
+| `src/transport.mjs` | `send`, `sendToClient`, id + room-code helpers |
+| `src/util.mjs` | Pure sanitizers/helpers (no state dependency) |
+| `src/matchmaking.mjs` | Queues, sides, `match_ready`, `queue_status` |
+| `src/rooms.mjs` | 1v1 room lifecycle (join/leave/broadcast) |
+| `src/lobby.mjs` | Generic v2 lobby lifecycle (game-agnostic) |
+| `src/router.mjs` | WebSocket message dispatch table |
+| `games/registry.mjs` | Maps gameId → game integration |
+| `games/<game>/server/*` | Per-game server logic |
+
+**Two game integration styles** (both fronted by `games/registry.mjs`):
+1. **Self-owning bridge** — `circuit-siege` owns its own rooms/queues and
+   intercepts messages (`shouldRouteToCircuitSiege` / `getCircuitSiegeBridge`).
+2. **Lobby game-module** — `echo-duel` and `build-buddy` plug into the generic
+   lobby via the interface documented at the top of `src/lobby.mjs`. Each game has
+   a pure `*-match-engine.mjs` (state transitions + serializers) and a
+   `*-lobby-game.mjs` adapter (timers, broadcasting, lobby wiring).
+
+`src/lobby.mjs` is intentionally free of game-specific identifiers; anything
+game-specific is delegated to the module returned by `lobbyGame(gameId)`.
+
+Note: the `src/*` and `games/*` adapters import each other (rooms↔lobby,
+lobby↔registry↔adapters). These cycles are safe because the shared bindings are
+only used inside function bodies; the registry's lobby-game map is built lazily
+to avoid touching adapter bindings during their temporal dead zone.
+
 ## In-Memory State
+
+All of the following live in `src/state.mjs` and are imported wherever needed.
 
 | Variable | Type | Purpose |
 |---|---|---|
@@ -83,15 +119,19 @@ Both live in the same Railway project but are fully independent. Work is never m
 
 ## Key Helpers
 
-- `send(ws, payload)` — safe JSON send (checks `readyState`)
-- `sendToClient(clientId, payload)` — send via clientId lookup
-- `broadcastToRoom(roomCode, payload, exceptClientId?)` — broadcast, optionally skipping one client
-- `leaveRoom(clientId, reason)` — removes from room, fires `player_left` to remaining, `room_left` to leaver; deletes room if empty
-- `joinRoom(clientId, roomCode)` — validates, handles already-in-room, fires `room_joined` + `player_joined`
-- `leaveQueue(clientId)` — removes from whichever match queue the client is in
+- `send(ws, payload)` / `sendToClient(clientId, payload)` — safe JSON send (`src/transport.mjs`)
+- `broadcastToRoom(roomCode, payload, exceptClientId?)` — broadcast, optionally skipping one client (`src/rooms.mjs`)
+- `leaveRoom(clientId, reason)` — removes from room, fires `player_left` to remaining, `room_left` to leaver; deletes room if empty (`src/rooms.mjs`)
+- `joinRoom(clientId, roomCode)` — validates, handles already-in-room, fires `room_joined` + `player_joined` (`src/rooms.mjs`)
+- `leaveQueue(clientId)` — removes from whichever match queue the client is in (`src/matchmaking.mjs`)
 - Side-aware matchmaking is opt-in. Older games that only send `gameId` still use the legacy per-game queue.
-- `buildMatchReadyMessages(...)` — builds the mirrored `match_ready` payloads that share one seed and one countdown start time
+- `buildMatchReadyMessages(...)` — builds the mirrored `match_ready` payloads that share one seed and one countdown start time (`src/matchmaking.mjs`)
+- Adding a new lobby-based game: implement the lobby game-module interface (see `src/lobby.mjs`) in a `games/<game>/server/*-lobby-game.mjs` and register it in `games/registry.mjs` — do **not** add game branches to `src/lobby.mjs`.
 - Current handoff note: the countdown/start ownership pass is done; future work for strict-timing games should focus on richer replicated state or server assistance, not on reworking matchmaking again
+
+## Tests
+
+`npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`, and the three `games/circuit-siege/*.test.mjs` suites. Pure match engines and helpers are unit tested directly (no socket needed); each test file is self-contained and exits non-zero on failure.
 
 Queue status note: `queue_status` watchers now receive immediate and change-driven updates with `queueCounts`, `boyWaiting`, and `girlWaiting` for the requested game.
 

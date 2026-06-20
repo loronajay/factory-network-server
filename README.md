@@ -86,7 +86,7 @@ for the full extension documentation.
 
 ```bash
 npm install
-node server.js
+npm start   # node server.mjs
 ```
 
 Runs on port 3000 by default. Set `PORT` env var to override.

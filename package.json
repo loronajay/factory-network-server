@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "description": "Factory Network backend for JayArcade",
-  "main": "server.js",
+  "main": "server.mjs",
   "scripts": {
-    "start": "node server.js",
-    "test": "node server.test.js && node games/circuit-siege/board-catalog.test.mjs && node games/circuit-siege/room-engine.test.mjs && node games/circuit-siege/server-bridge.test.mjs"
+    "start": "node server.mjs",
+    "test": "node src/matchmaking.test.mjs && node src/lobby.test.mjs && node games/echo-duel/echo-duel.test.mjs && node games/build-buddy/build-buddy.test.mjs && node games/circuit-siege/board-catalog.test.mjs && node games/circuit-siege/room-engine.test.mjs && node games/circuit-siege/server-bridge.test.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
