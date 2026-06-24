@@ -74,7 +74,12 @@ A game's *folder* holds whatever its definition needs: lobby-based games
 (`echo-duel`, `build-buddy`) have a pure `*-match-engine.mjs` + a `*-lobby-game.mjs`
 adapter; the self-owning `circuit-siege` has its bridge; `sumorai` has only a
 seeded stage-plan; `creature-battler` / `cockpit-swarm` are just a strategy
-descriptor.
+descriptor. `mini-tactics` is a **config-only lobby game** (2-4 players, FFA +
+2v2 teams): its `lobbyGame` carries `lobbyLimits` only — no match engine — because
+the match runs as deterministic client lockstep over the generic lobby relay
+(shared `seed` + ordered `members` from `lobby_started`; board size/format/squads
+exchanged in-band via `config`/`setup` lobby_messages; owner broadcasts the
+state-hash; a dropped seat is conceded by the remaining owner).
 
 ### Adding a game (the one path)
 

@@ -1,28 +1,28 @@
-// Mini-Tactics game definition. Turn-based isometric squad tactics, 1v1 online.
+// Mini-Tactics game definition. Turn-based isometric squad tactics, 2-4 players
+// online (FFA + 2v2 teams).
 //
-// The match itself is host-authoritative over the generic relay (the
-// cockpit-swarm pattern): there is NO server-side match logic here. The relay
-// pairs two players (p1 = host, p2 = guest) and hands both the same `seed` at
-// match start; the clients run the deterministic core in lockstep from that
-// seed. Board size AND each player's squad composition are broadcast in-band
-// (`setup` room_messages — the host carries size + its squad, the guest carries
-// its squad; it's a blind pick), so they intentionally stay out of matchSettings
-// — only the shared seed and a rules version travel through match_ready.
-const GAME_IDS = new Set(["mini-tactics"]);
+// The match is deterministic LOCKSTEP over the generic v2 lobby relay: there is
+// NO server-side match logic here. The lobby hands every client an identical
+// ordered `members` array + one shared `seed` at start, and the clients run the
+// deterministic core in lockstep from that seed (seat = index in members + 1).
+// Board size, format, team colors/names, AND each player's squad composition are
+// all exchanged in-band (`config`/`setup` lobby_messages — a blind pick), so they
+// intentionally never touch server lobby settings. The lobby owner is the
+// authoritative state-hash broadcaster; a divergence is detected, not prevented.
+//
+// `lobbyGame` is config-only (just `gameId` + `lobbyLimits`): it carries no
+// `initMatch`/`handleMessage`/`applyDisconnect`, so every `lobby_message` falls
+// through to the generic relay broadcast, `canLobbyStart` is true at >= minPlayers,
+// and `lobbyLimitsForGame` caps the room at 2-4 seats. Disconnects use the generic
+// lobby `leave` path (no reconnect grace), firing `lobby_player_left` to the rest;
+// the remaining clients' owner injects a `concede` command for the dropped seat.
+const MINI_TACTICS_GAME_ID = "mini-tactics";
 
 export const definition = {
-  matches: (gameId) => GAME_IDS.has(gameId),
-  // Symmetric seats: neither queue side has a fixed role, so the relay can
-  // auto-balance which searcher becomes p1 (host) vs p2 (guest) — any two players
-  // in the queue pair. (Squads may differ via blind-pick custom compositions, but
-  // that is exchanged in-band after pairing and never affects matchmaking.)
-  // The authoritative side is whatever match_ready reports, never a client claim.
-  matchmaking: { strategy: "symmetric-balanced", sides: ["p1", "p2"] },
-  matchSettings: (seed) => {
-    const normalizedSeed = Number.isFinite(Number(seed)) ? Number(seed) : 0;
-    return {
-      rulesVersion: "mini-tactics-online-v1",
-      seed: normalizedSeed,
-    };
+  id: MINI_TACTICS_GAME_ID,
+  matchmaking: { strategy: "lobby" },
+  lobbyGame: {
+    gameId: MINI_TACTICS_GAME_ID,
+    lobbyLimits: { minPlayers: 2, maxPlayers: 4 },
   },
 };

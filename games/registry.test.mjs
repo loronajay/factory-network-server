@@ -40,9 +40,8 @@ test("matchmakingStrategy resolves per-game strategies and a default", () => {
 
   assertEq(matchmakingStrategy("echo-duel").strategy, "lobby");
 
-  // mini-tactics: symmetric seats, so the relay auto-balances p1/p2 like cockpit
-  assertEq(matchmakingStrategy("mini-tactics").strategy, "symmetric-balanced");
-  assertEq(matchmakingStrategy("mini-tactics").sides.join(","), "p1,p2");
+  // mini-tactics: 2-4 player deterministic-lockstep over the generic lobby relay
+  assertEq(matchmakingStrategy("mini-tactics").strategy, "lobby");
 
   // unknown gameId -> default side-pair relay
   assertEq(matchmakingStrategy("lovers-lost").strategy, "side-pair");
@@ -62,18 +61,22 @@ test("matchSettings is server-owned for Sumorai (incl. -ranked) and null otherwi
   assertEq(matchSettings("creature-battler-fire", 1), null);
 });
 
-test("matchSettings hands mini-tactics a shared deterministic seed", () => {
-  const s = matchSettings("mini-tactics", 98765);
-  assertEq(s.rulesVersion, "mini-tactics-online-v1");
-  assertEq(s.seed, 98765);
-  // board size is a host choice broadcast in-band, never derived from the seed
-  assertEq(s.size, undefined);
+test("mini-tactics has no server-owned matchSettings (lobby seed is server-generated)", () => {
+  // The lobby generates its own shared seed (makeMatchSeed) on start, so unlike
+  // the old room path mini-tactics no longer needs a matchSettings echo.
+  assertEq(matchSettings("mini-tactics", 98765), null);
 });
 
 test("lobbyGame resolves lobby-based games and is null for the rest", () => {
   assert(lobbyGame("echo-duel"), "echo-duel should have a lobby game");
   assert(lobbyGame("build-buddy"), "build-buddy should have a lobby game");
   assert(lobbyGame("pot-of-greed"), "pot-of-greed should have a lobby game");
+  // mini-tactics is a config-only lobby game: limits but no match logic.
+  const mt = lobbyGame("mini-tactics");
+  assert(mt, "mini-tactics should have a lobby game");
+  assertEq(mt.lobbyLimits.minPlayers, 2);
+  assertEq(mt.lobbyLimits.maxPlayers, 4);
+  assertEq(typeof mt.handleMessage, "undefined");
   assertEq(lobbyGame("sumorai"), null);
   assertEq(lobbyGame("nope"), null);
 });
