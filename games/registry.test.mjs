@@ -40,6 +40,10 @@ test("matchmakingStrategy resolves per-game strategies and a default", () => {
 
   assertEq(matchmakingStrategy("echo-duel").strategy, "lobby");
 
+  // mini-tactics: symmetric seats, so the relay auto-balances p1/p2 like cockpit
+  assertEq(matchmakingStrategy("mini-tactics").strategy, "symmetric-balanced");
+  assertEq(matchmakingStrategy("mini-tactics").sides.join(","), "p1,p2");
+
   // unknown gameId -> default side-pair relay
   assertEq(matchmakingStrategy("lovers-lost").strategy, "side-pair");
   assertEq(matchmakingStrategy("totally-new-game").strategy, "side-pair");
@@ -56,6 +60,14 @@ test("matchSettings is server-owned for Sumorai (incl. -ranked) and null otherwi
   assert(matchSettings("sumorai-ranked", 1) !== null, "sumorai-ranked should have settings");
   assertEq(matchSettings("lovers-lost", 12345), null);
   assertEq(matchSettings("creature-battler-fire", 1), null);
+});
+
+test("matchSettings hands mini-tactics a shared deterministic seed", () => {
+  const s = matchSettings("mini-tactics", 98765);
+  assertEq(s.rulesVersion, "mini-tactics-online-v1");
+  assertEq(s.seed, 98765);
+  // board size is a host choice broadcast in-band, never derived from the seed
+  assertEq(s.size, undefined);
 });
 
 test("lobbyGame resolves lobby-based games and is null for the rest", () => {
