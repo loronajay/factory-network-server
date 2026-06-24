@@ -89,6 +89,7 @@ function parse(value) {
 export const potOfGreedLobbyGame = {
   gameId: POT_OF_GREED_GAME_ID,
   lobbyLimits: { minPlayers: POT_OF_GREED_CONFIG.minimumPlayers, maxPlayers: POT_OF_GREED_CONFIG.maximumPlayers },
+  reconnectGracePeriodMs: 30_000,
 
   canStart(lobby) {
     const count = lobby?.members?.size || 0;
@@ -136,6 +137,13 @@ export const potOfGreedLobbyGame = {
     return true;
   },
 
+  applyReconnect(lobby, clientId, now) {
+    if (!lobby?.potOfGreedMatch) return false;
+    lobby.potOfGreedMatch = applyPotOfGreedConnection(lobby.potOfGreedMatch, clientId, true, now);
+    return true;
+  },
+
   broadcastAfterLeave(lobby) { sendState(lobby); },
+  broadcastAfterReconnect(lobby) { sendState(lobby); },
   clearTimers(lobby) { clearPhaseTimer(lobby); },
 };

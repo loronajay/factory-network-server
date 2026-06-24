@@ -4,8 +4,12 @@ import {
   canLobbyOwnerUpdateSettings,
   doesLobbyMatchSearch,
   buildLobbyStartedPayload,
+  buildLobbyPayload,
 } from "./lobby.mjs";
 import { createEchoDuelMatchState } from "../games/echo-duel/server/echo-duel-match-engine.mjs";
+import { createPotOfGreedMatchState } from "../games/pot-of-greed/server/pot-of-greed-match-engine.mjs";
+import { lobbies, clientLobbies, clientDisplayLobbies, clientSessionTokens, suspendedLobbySessions } from "./state.mjs";
+import { createLobby, suspendLobbyClient, resumeLobbyClient } from "./lobby.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -97,6 +101,80 @@ test("Pot of Greed lobby requirements prevent an underfilled game from starting"
     maxPlayers: 8,
     members: new Set(["c_1", "c_2", "c_3", "c_4"]),
   }), true);
+});
+
+test("a Pot of Greed player can resume their locked roster seat within the reconnect window", () => {
+  const memberIds = ["c_alex", "c_morgan", "c_riley", "c_jordan"];
+  const lobby = {
+    roomCode: "GREED",
+    gameId: "pot-of-greed",
+    ownerId: "c_alex",
+    status: "started",
+    members: new Set(memberIds),
+    memberProfiles: new Map(memberIds.map((id) => [id, { displayName: id }])),
+    potOfGreedMatch: null,
+  };
+  lobby.potOfGreedMatch = createPotOfGreedMatchState(lobby, 1000);
+  lobbies.set(lobby.roomCode, lobby);
+  for (const id of memberIds) clientLobbies.set(id, lobby.roomCode);
+  clientSessionTokens.set("c_morgan", "resume-secret");
+
+  try {
+    assertEq(suspendLobbyClient("c_morgan", "disconnect", 2000), true);
+    assertEq(lobby.members.has("c_morgan"), true);
+    assertEq(lobby.potOfGreedMatch.players.find((player) => player.id === "c_morgan").connected, false);
+    assertEq(suspendedLobbySessions.has("c_morgan"), true);
+
+    assertEq(resumeLobbyClient("c_temporary", "c_morgan", "resume-secret", 2500)?.roomCode, "GREED");
+    assertEq(lobby.potOfGreedMatch.players.find((player) => player.id === "c_morgan").connected, true);
+    assertEq(suspendedLobbySessions.has("c_morgan"), false);
+  } finally {
+    const suspended = suspendedLobbySessions.get("c_morgan");
+    if (suspended?.timer) clearTimeout(suspended.timer);
+    lobbies.delete(lobby.roomCode);
+    for (const id of memberIds) clientLobbies.delete(id);
+    clientSessionTokens.delete("c_morgan");
+    suspendedLobbySessions.delete("c_morgan");
+  }
+});
+
+test("a display-created Pot of Greed room does not consume a player seat", () => {
+  const displayId = "c_display";
+  const lobby = createLobby(displayId, { gameId: "pot-of-greed", identity: { displayName: "Main Screen" } }, { isPrivate: true, displayOnly: true });
+  try {
+    assertEq(lobby.displayClientId, displayId);
+    assertEq(lobby.members.size, 0);
+    assertEq(clientDisplayLobbies.get(displayId), lobby.roomCode);
+    assertEq(clientLobbies.has(displayId), false);
+    assertEq(lobby.minPlayers, 4);
+    assertEq(lobby.maxPlayers, 8);
+  } finally {
+    lobbies.delete(lobby.roomCode);
+    clientDisplayLobbies.delete(displayId);
+  }
+});
+
+test("lobby snapshots expose the joined player roster to the shared display", () => {
+  const payload = buildLobbyPayload({
+    roomCode: "ROSTER",
+    gameId: "pot-of-greed",
+    ownerId: "c_display",
+    displayClientId: "c_display",
+    members: new Set(["c_alex", "c_morgan"]),
+    memberProfiles: new Map([
+      ["c_alex", { displayName: "Alex" }],
+      ["c_morgan", { displayName: "Morgan" }],
+    ]),
+    minPlayers: 4,
+    maxPlayers: 8,
+    status: "open",
+    isPrivate: true,
+    settings: {},
+    startAt: null,
+  });
+  assertEq(payload.players[0].name, "Alex");
+  assertEq(payload.players[1].name, "Morgan");
+  assertEq(payload.displayClientId, "c_display");
 });
 
 test("canLobbyOwnerUpdateSettings locks settings once startup or match flow has begun", () => {

@@ -114,6 +114,24 @@ function actionSummary(match, clientId) {
   return { ...resolved };
 }
 
+function calculateFinalResults(players, vaultGold) {
+  const highestGold = Math.max(...players.map((player) => player.gold));
+  let winners = players.filter((player) => player.gold === highestGold);
+  if (winners.length > 1) {
+    const mostCorrectVotes = Math.max(...winners.map((player) => player.correctVotes));
+    winners = winners.filter((player) => player.correctVotes === mostCorrectVotes);
+  }
+  if (winners.length > 1) {
+    const fewestWrongfulVotes = Math.min(...winners.map((player) => player.wrongfulVotes));
+    winners = winners.filter((player) => player.wrongfulVotes === fewestWrongfulVotes);
+  }
+  return {
+    winnerIds: winners.map((player) => player.id),
+    vaultGold,
+    balances: players.map((player) => ({ id: player.id, name: player.name, gold: player.gold, status: player.status })),
+  };
+}
+
 function assertMatchRoster(lobby) {
   const count = lobby?.members?.size || 0;
   if (count < POT_OF_GREED_CONFIG.minimumPlayers || count > POT_OF_GREED_CONFIG.maximumPlayers) {
@@ -150,6 +168,7 @@ export function createPotOfGreedMatchState(lobby, now = Date.now()) {
     runoffTargets: [],
     audit: null,
     lastVoteResult: null,
+    finalResults: null,
     tieBreakSeed: Math.abs(Math.floor(Number(lobby?.seed) || 0)),
     tieBreakCount: 0,
     history: [],
@@ -232,9 +251,6 @@ export function beginPotOfGreedVote(match, now = Date.now()) {
 }
 
 export function submitPotOfGreedVote(match, clientId, targetId, now = Date.now()) {
-  if (!match || (match.phase === POT_OF_GREED_PHASES.HIDDEN_DISCUSSION || match.phase === POT_OF_GREED_PHASES.SHOW_DISCUSSION)) {
-    match = beginPotOfGreedVote(match, now);
-  }
   if (!isVotePhase(match?.phase)) return match;
   const voter = playerFor(match, clientId);
   const target = playerFor(match, targetId);
@@ -318,6 +334,7 @@ export function advancePotOfGreedCycle(match, now = Date.now()) {
       }
       player.pendingInvestments = [];
     }
+    next.finalResults = calculateFinalResults(next.players, next.vaultGold);
     next.phase = POT_OF_GREED_PHASES.FINAL_RESULTS;
     next.updatedAt = now;
     return next;
@@ -367,6 +384,7 @@ export function serializePotOfGreedPublicState(match) {
     players: match.players.map(({ id, name, status, connected, gold }) => ({ id, name, status, connected, ...(match.cycleType === "show" || match.phase === POT_OF_GREED_PHASES.FINAL_RESULTS ? { gold } : {}) })),
     voteProgress: { submitted: Object.keys(match.votes).length, eligible: connectedPlayers(match).length },
     lastVoteResult: match.lastVoteResult ? clone(match.lastVoteResult) : null,
+    finalResults: match.finalResults ? clone(match.finalResults) : null,
   };
 }
 

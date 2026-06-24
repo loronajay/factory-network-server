@@ -30,3 +30,6 @@ export const clientQueueWatch = new Map();// clientId -> gameId
 // --- v2 lobby state ---
 export const lobbies = new Map();         // roomCode -> lobby
 export const clientLobbies = new Map();   // clientId -> roomCode
+export const clientDisplayLobbies = new Map(); // display clientId -> roomCode
+export const clientSessionTokens = new Map(); // clientId -> opaque reconnect token
+export const suspendedLobbySessions = new Map(); // clientId -> { roomCode, expiresAt, timer }

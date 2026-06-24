@@ -8,6 +8,7 @@ import {
   clientSides,
   clientQueueWatch,
   clientLobbies,
+  clientSessionTokens,
   rooms,
   roomGameIds,
   matchQueues,
@@ -33,8 +34,12 @@ import {
   updateLobbySettings,
   requestStartLobby,
   leaveLobby,
+  leaveDisplayLobby,
+  suspendLobbyClient,
+  resumeLobbyClient,
   broadcastToLobby,
   rememberLobbyIdentity,
+  sendLobbyUpdated,
 } from "./lobby.mjs";
 import {
   lobbyGame,
@@ -46,7 +51,7 @@ import {
 // Each handler receives { clientId, ws, data }.
 const handlers = {
   create_lobby({ clientId, data }) {
-    createLobby(clientId, data, { isPrivate: !!data.private });
+    createLobby(clientId, data, { isPrivate: !!data.private, displayOnly: data.role === "display" });
   },
 
   join_lobby({ clientId, data }) {
@@ -78,6 +83,29 @@ const handlers = {
 
   leave_lobby({ clientId }) {
     leaveLobby(clientId, "left");
+  },
+
+  resume_lobby({ clientId, ws, data, connection }) {
+    const previousClientId = String(data.clientId || "");
+    const sessionToken = String(data.sessionToken || "");
+    const lobby = resumeLobbyClient(clientId, previousClientId, sessionToken);
+    if (!lobby) {
+      send(ws, { event: "error", code: "RESUME_REJECTED", message: "That reconnect session is no longer available." });
+      return;
+    }
+    clients.delete(clientId);
+    clientSessionTokens.delete(clientId);
+    clients.set(previousClientId, ws);
+    if (connection) connection.clientId = previousClientId;
+    const game = lobbyGame(lobby.gameId);
+    if (game?.applyReconnect) game.broadcastAfterReconnect?.(lobby) || game.broadcastAfterLeave?.(lobby);
+    else sendLobbyUpdated(lobby);
+    send(ws, {
+      event: "session_resumed",
+      clientId: previousClientId,
+      sessionToken: clientSessionTokens.get(previousClientId),
+      roomCode: lobby.roomCode,
+    });
   },
 
   lobby_message({ clientId, ws, data }) {
@@ -193,6 +221,7 @@ const handlers = {
     const currentRoom = clientRooms.get(clientId);
     if (currentRoom) leaveRoom(clientId, "find_match");
     leaveLobby(clientId, "find_match");
+    leaveDisplayLobby(clientId, "find_match");
     const removedQueueKey = leaveQueue(clientId);
     if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
 
@@ -235,7 +264,7 @@ const handlers = {
   },
 };
 
-export function handleClientMessage(clientId, ws, raw) {
+export function handleClientMessage(clientId, ws, raw, connection = null) {
   let data;
   try {
     data = JSON.parse(raw.toString());
@@ -256,7 +285,7 @@ export function handleClientMessage(clientId, ws, raw) {
     send(ws, { event: "error", code: "UNKNOWN_TYPE", message: "Unknown message type" });
     return;
   }
-  handler({ clientId, ws, data });
+  handler({ clientId, ws, data, connection });
 }
 
 export function handleClientDisconnect(clientId, reason) {
@@ -268,7 +297,8 @@ export function handleClientDisconnect(clientId, reason) {
     if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
     leaveRoom(clientId, reason);
   }
-  leaveLobby(clientId, reason);
+  if (!suspendLobbyClient(clientId, reason)) leaveLobby(clientId, reason);
+  leaveDisplayLobby(clientId, reason);
   clientSides.delete(clientId);
   clientQueueWatch.delete(clientId);
   clients.delete(clientId);

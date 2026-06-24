@@ -17,6 +17,9 @@
 import {
   lobbies,
   clientLobbies,
+  clientDisplayLobbies,
+  clientSessionTokens,
+  suspendedLobbySessions,
   DEFAULT_LOBBY_COUNTDOWN_MS,
   LOBBY_START_DELAY_MS,
 } from "./state.mjs";
@@ -80,6 +83,67 @@ export function rememberLobbyIdentity(lobby, clientId, identity) {
   if (!sanitized) return;
   if (!(lobby.memberProfiles instanceof Map)) lobby.memberProfiles = new Map();
   lobby.memberProfiles.set(clientId, sanitized);
+}
+
+function clearSuspendedLobbySession(clientId) {
+  const suspended = suspendedLobbySessions.get(clientId);
+  if (suspended?.timer) clearTimeout(suspended.timer);
+  suspendedLobbySessions.delete(clientId);
+}
+
+function reconnectGraceMs(lobby) {
+  const value = Number(lobbyGame(lobby?.gameId)?.reconnectGracePeriodMs);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+export function suspendLobbyClient(clientId, reason = "disconnect", now = Date.now()) {
+  const roomCode = clientLobbies.get(clientId);
+  const lobby = lobbies.get(roomCode);
+  if (!lobby || lobby.status !== "started" || !reconnectGraceMs(lobby) || suspendedLobbySessions.has(clientId)) return false;
+
+  const game = lobbyGame(lobby.gameId);
+  const matchChanged = game?.applyDisconnect?.(lobby, clientId, now) || false;
+  const expiresAt = now + reconnectGraceMs(lobby);
+  const timer = setTimeout(() => expireSuspendedLobbyClient(clientId), reconnectGraceMs(lobby));
+  if (typeof timer.unref === "function") timer.unref();
+  suspendedLobbySessions.set(clientId, { roomCode, expiresAt, timer });
+
+  broadcastToLobby(roomCode, {
+    event: "lobby_player_disconnected",
+    clientId,
+    roomCode,
+    reconnectExpiresAt: expiresAt,
+    reason,
+  }, clientId);
+  if (matchChanged) game?.broadcastAfterLeave?.(lobby);
+  return true;
+}
+
+export function expireSuspendedLobbyClient(clientId) {
+  const suspended = suspendedLobbySessions.get(clientId);
+  if (!suspended) return false;
+  clearSuspendedLobbySession(clientId);
+  leaveLobby(clientId, "reconnect_expired");
+  clientSessionTokens.delete(clientId);
+  return true;
+}
+
+export function resumeLobbyClient(currentClientId, previousClientId, sessionToken, now = Date.now()) {
+  const originalId = String(previousClientId || "");
+  const suspended = suspendedLobbySessions.get(originalId);
+  if (!suspended || suspended.expiresAt <= now || clientSessionTokens.get(originalId) !== sessionToken) return null;
+  const lobby = lobbies.get(suspended.roomCode);
+  if (!lobby || clientLobbies.get(originalId) !== lobby.roomCode) return null;
+
+  clearSuspendedLobbySession(originalId);
+  const game = lobbyGame(lobby.gameId);
+  const matchChanged = game?.applyReconnect?.(lobby, originalId, now) || false;
+  broadcastToLobby(lobby.roomCode, {
+    event: "lobby_player_reconnected",
+    clientId: originalId,
+    roomCode: lobby.roomCode,
+  }, originalId);
+  return lobby;
 }
 
 function clearLobbyCountdown(lobby) {
@@ -146,19 +210,27 @@ export function leaveLobby(clientId, reason = "left") {
 
   const game = lobbyGame(lobby.gameId);
 
+  clearSuspendedLobbySession(clientId);
+
   lobby.members.delete(clientId);
   clientLobbies.delete(clientId);
   if (lobby.memberProfiles instanceof Map) lobby.memberProfiles.delete(clientId);
+  clientSessionTokens.delete(clientId);
 
   sendToClient(clientId, {
     event: "lobby_left",
     roomCode,
   });
 
-  if (lobby.members.size === 0) {
+  if (lobby.members.size === 0 && !lobby.displayClientId) {
     clearLobbyCountdown(lobby);
     game?.clearTimers?.(lobby);
     lobbies.delete(roomCode);
+    return;
+  }
+
+  if (lobby.members.size === 0) {
+    maybeStartLobbyCountdown(lobby);
     return;
   }
 
@@ -194,10 +266,28 @@ export function leaveLobby(clientId, reason = "left") {
   }
 }
 
-export function createLobby(clientId, data = {}, { isPrivate = false } = {}) {
+export function leaveDisplayLobby(clientId, reason = "left") {
+  const roomCode = clientDisplayLobbies.get(clientId);
+  if (!roomCode) return;
+  const lobby = lobbies.get(roomCode);
+  clientDisplayLobbies.delete(clientId);
+  if (!lobby || lobby.displayClientId !== clientId) return;
+
+  const game = lobbyGame(lobby.gameId);
+  clearLobbyCountdown(lobby);
+  game?.clearTimers?.(lobby);
+  for (const memberId of lobby.members) {
+    clientLobbies.delete(memberId);
+    sendToClient(memberId, { event: "lobby_closed", roomCode, reason: "display_left" });
+  }
+  lobbies.delete(roomCode);
+}
+
+export function createLobby(clientId, data = {}, { isPrivate = false, displayOnly = false } = {}) {
   leaveQueue(clientId);
   leaveRoom(clientId, "create_lobby");
   leaveLobby(clientId, "create_new_lobby");
+  leaveDisplayLobby(clientId, "create_new_lobby");
 
   const roomCode = uniqueRoomCode();
   const gameId = sanitizeLobbyGameId(data.gameId);
@@ -206,8 +296,9 @@ export function createLobby(clientId, data = {}, { isPrivate = false } = {}) {
     roomCode,
     gameId,
     ownerId: clientId,
-    members: new Set([clientId]),
+    members: displayOnly ? new Set() : new Set([clientId]),
     memberProfiles: new Map(),
+    displayClientId: displayOnly ? clientId : null,
     minPlayers: limits.minPlayers,
     maxPlayers: limits.maxPlayers,
     settings: sanitizeLobbySettings(data.settings),
@@ -219,10 +310,11 @@ export function createLobby(clientId, data = {}, { isPrivate = false } = {}) {
     seed: null,
     createdAt: Date.now(),
   };
-  rememberLobbyIdentity(lobby, clientId, data.identity);
+  if (displayOnly) clientDisplayLobbies.set(clientId, roomCode);
+  else rememberLobbyIdentity(lobby, clientId, data.identity);
 
   lobbies.set(roomCode, lobby);
-  clientLobbies.set(clientId, roomCode);
+  if (!displayOnly) clientLobbies.set(clientId, roomCode);
 
   sendToClient(clientId, {
     event: "lobby_joined",
@@ -268,6 +360,7 @@ export function joinLobby(clientId, roomCode, identity = null) {
   leaveQueue(clientId);
   leaveRoom(clientId, "join_lobby");
   leaveLobby(clientId, "switch_lobby");
+  leaveDisplayLobby(clientId, "join_lobby");
 
   lobby.members.add(clientId);
   clientLobbies.set(clientId, code);
@@ -365,7 +458,7 @@ export function updateLobbySettings(clientId, data = {}) {
 }
 
 export function requestStartLobby(clientId) {
-  const roomCode = clientLobbies.get(clientId);
+  const roomCode = clientLobbies.get(clientId) || clientDisplayLobbies.get(clientId);
   const lobby = lobbies.get(roomCode);
 
   if (!lobby) {

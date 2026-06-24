@@ -23,6 +23,7 @@ import {
   rooms,
   lobbies,
   matchQueues,
+  clientSessionTokens,
 } from "./src/state.mjs";
 import { makeId, send } from "./src/transport.mjs";
 import { handleClientMessage, handleClientDisconnect } from "./src/router.mjs";
@@ -56,14 +57,16 @@ app.get("/", (req, res) => {
 
 // --- WebSocket handling ---
 wss.on("connection", (ws) => {
-  const clientId = makeId("c_");
-  clients.set(clientId, ws);
+  const connection = { clientId: makeId("c_") };
+  const sessionToken = makeId("s_");
+  clients.set(connection.clientId, ws);
+  clientSessionTokens.set(connection.clientId, sessionToken);
 
-  send(ws, { event: "connected", clientId });
+  send(ws, { event: "connected", clientId: connection.clientId, sessionToken });
 
-  ws.on("message", (raw) => handleClientMessage(clientId, ws, raw));
-  ws.on("close", () => handleClientDisconnect(clientId, "disconnect"));
-  ws.on("error", () => handleClientDisconnect(clientId, "error"));
+  ws.on("message", (raw) => handleClientMessage(connection.clientId, ws, raw, connection));
+  ws.on("close", () => handleClientDisconnect(connection.clientId, "disconnect"));
+  ws.on("error", () => handleClientDisconnect(connection.clientId, "error"));
 });
 
 server.listen(PORT, () => {
