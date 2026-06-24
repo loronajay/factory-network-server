@@ -81,6 +81,24 @@ test("canLobbyStart only allows explicit owner-start from an open ready lobby", 
   }), false);
 });
 
+test("Pot of Greed lobby requirements prevent an underfilled game from starting", () => {
+  assertEq(canLobbyStart({
+    gameId: "pot-of-greed",
+    status: "open",
+    minPlayers: 2,
+    maxPlayers: 8,
+    members: new Set(["c_1", "c_2", "c_3"]),
+  }), false);
+
+  assertEq(canLobbyStart({
+    gameId: "pot-of-greed",
+    status: "open",
+    minPlayers: 4,
+    maxPlayers: 8,
+    members: new Set(["c_1", "c_2", "c_3", "c_4"]),
+  }), true);
+});
+
 test("canLobbyOwnerUpdateSettings locks settings once startup or match flow has begun", () => {
   assertEq(canLobbyOwnerUpdateSettings({ status: "open" }), true);
   assertEq(canLobbyOwnerUpdateSettings({ status: "countdown" }), false);

@@ -12,7 +12,7 @@ export const MATCH_READY_DELAY_MS = 4000;
 
 // Parallel lobby protocol for 2-6 player games such as Echo Duel.
 // The room/matchmaking protocol stays 1v1 for Lovers Lost / Battleshits.
-export const MAX_LOBBY_PLAYERS = 6;
+export const MAX_LOBBY_PLAYERS = 8;
 export const DEFAULT_LOBBY_MIN_PLAYERS = 2;
 export const DEFAULT_LOBBY_MAX_PLAYERS = 6;
 export const DEFAULT_LOBBY_COUNTDOWN_MS = 20000;

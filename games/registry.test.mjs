@@ -73,6 +73,7 @@ test("matchSettings hands mini-tactics a shared deterministic seed", () => {
 test("lobbyGame resolves lobby-based games and is null for the rest", () => {
   assert(lobbyGame("echo-duel"), "echo-duel should have a lobby game");
   assert(lobbyGame("build-buddy"), "build-buddy should have a lobby game");
+  assert(lobbyGame("pot-of-greed"), "pot-of-greed should have a lobby game");
   assertEq(lobbyGame("sumorai"), null);
   assertEq(lobbyGame("nope"), null);
 });

@@ -44,6 +44,20 @@ export { sanitizeLobbyLimits, lobbyPlayerCount };
 // keep working.
 export { getLobbyMemberIds, broadcastToLobby, buildLobbyPayload, sendLobbyUpdated };
 
+function lobbyLimitsForGame(game, minPlayers, maxPlayers) {
+  const required = game?.lobbyLimits;
+  if (!required) return sanitizeLobbyLimits(minPlayers, maxPlayers);
+  const requested = sanitizeLobbyLimits(
+    Number.isFinite(Number(minPlayers)) ? minPlayers : required.minPlayers,
+    Number.isFinite(Number(maxPlayers)) ? maxPlayers : required.maxPlayers,
+  );
+  const max = Math.max(Number(required.minPlayers) || 2, Math.min(requested.maxPlayers, Number(required.maxPlayers) || requested.maxPlayers));
+  return {
+    minPlayers: Math.max(Number(required.minPlayers) || 2, Math.min(requested.minPlayers, max)),
+    maxPlayers: max,
+  };
+}
+
 export function isLobbyJoinable(lobby) {
   if (!lobby) return false;
   return lobby.status === "open" && lobbyPlayerCount(lobby) < lobby.maxPlayers;
@@ -51,7 +65,8 @@ export function isLobbyJoinable(lobby) {
 
 export function canLobbyStart(lobby) {
   if (!lobby) return false;
-  return lobby.status === "open" && lobbyPlayerCount(lobby) >= lobby.minPlayers;
+  if (lobby.status !== "open" || lobbyPlayerCount(lobby) < lobby.minPlayers) return false;
+  return lobbyGame(lobby.gameId)?.canStart?.(lobby) ?? true;
 }
 
 export function canLobbyOwnerUpdateSettings(lobby) {
@@ -185,10 +200,11 @@ export function createLobby(clientId, data = {}, { isPrivate = false } = {}) {
   leaveLobby(clientId, "create_new_lobby");
 
   const roomCode = uniqueRoomCode();
-  const limits = sanitizeLobbyLimits(data.minPlayers, data.maxPlayers);
+  const gameId = sanitizeLobbyGameId(data.gameId);
+  const limits = lobbyLimitsForGame(lobbyGame(gameId), data.minPlayers, data.maxPlayers);
   const lobby = {
     roomCode,
-    gameId: sanitizeLobbyGameId(data.gameId),
+    gameId,
     ownerId: clientId,
     members: new Set([clientId]),
     memberProfiles: new Map(),
@@ -332,7 +348,7 @@ export function updateLobbySettings(clientId, data = {}) {
     return;
   }
 
-  const limits = sanitizeLobbyLimits(
+  const limits = lobbyLimitsForGame(lobbyGame(lobby.gameId),
     data.minPlayers ?? lobby.minPlayers,
     data.maxPlayers ?? lobby.maxPlayers
   );
