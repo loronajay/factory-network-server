@@ -24,6 +24,7 @@ import { definition as sumorai } from "./sumorai/server/sumorai.game.mjs";
 import { definition as creatureBattler } from "./creature-battler/server/creature-battler.game.mjs";
 import { definition as cockpitSwarm } from "./cockpit-swarm/server/cockpit-swarm.game.mjs";
 import { definition as miniTactics } from "./mini-tactics/server/mini-tactics.game.mjs";
+import { definition as tacticalArena } from "./tactical-arena/server/tactical-arena.game.mjs";
 import { definition as potOfGreed } from "./pot-of-greed/server/pot-of-greed.game.mjs";
 import { definition as questionableDecisions } from "./questionable-decisions/server/questionable-decisions.game.mjs";
 
@@ -35,7 +36,7 @@ const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 let definitions = null;
 function allDefinitions() {
   if (!definitions) {
-    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, potOfGreed, questionableDecisions];
+    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions];
   }
   return definitions;
 }
