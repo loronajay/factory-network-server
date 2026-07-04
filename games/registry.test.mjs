@@ -43,7 +43,7 @@ test("matchmakingStrategy resolves per-game strategies and a default", () => {
   // mini-tactics: 2-4 player deterministic-lockstep over the generic lobby relay
   assertEq(matchmakingStrategy("mini-tactics").strategy, "lobby");
 
-  // tactical-arena: 1v1 (2-player lobby) deterministic-lockstep, same relay pattern
+  // tactical-arena: 1v1/2v2 deterministic-lockstep, same relay pattern
   assertEq(matchmakingStrategy("tactical-arena").strategy, "lobby");
 
   // unknown gameId -> default side-pair relay
@@ -80,11 +80,11 @@ test("lobbyGame resolves lobby-based games and is null for the rest", () => {
   assertEq(mt.lobbyLimits.minPlayers, 2);
   assertEq(mt.lobbyLimits.maxPlayers, 4);
   assertEq(typeof mt.handleMessage, "undefined");
-  // tactical-arena is a config-only lobby game too, capped at 1v1 (2 seats).
+  // tactical-arena is a config-only lobby game too, capped at 4 seats.
   const ta = lobbyGame("tactical-arena");
   assert(ta, "tactical-arena should have a lobby game");
   assertEq(ta.lobbyLimits.minPlayers, 2);
-  assertEq(ta.lobbyLimits.maxPlayers, 2);
+  assertEq(ta.lobbyLimits.maxPlayers, 4);
   assertEq(typeof ta.handleMessage, "undefined");
   assertEq(lobbyGame("sumorai"), null);
   assertEq(lobbyGame("nope"), null);

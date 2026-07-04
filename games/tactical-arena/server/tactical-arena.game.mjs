@@ -1,5 +1,5 @@
 // Tactical Arena game definition. Turn-based isometric squad tactics — the
-// successor to Mini-Tactics. Online is 1v1 (a 2-player lobby) for now.
+// successor to Mini-Tactics. Online supports 1v1 duels and 4-player 2v2.
 //
 // Like Mini-Tactics, the match is deterministic LOCKSTEP over the generic v2 lobby
 // relay: there is NO server-side match logic here. The lobby hands every client an
@@ -13,10 +13,10 @@
 // `lobbyGame` is config-only (just `gameId` + `lobbyLimits`): it carries no
 // `initMatch`/`handleMessage`/`applyDisconnect`, so every `lobby_message` falls
 // through to the generic relay broadcast, `canLobbyStart` is true at >= minPlayers,
-// and `lobbyLimitsForGame` caps the room at 2 seats. Disconnects use the generic
+// and `lobbyLimitsForGame` caps the room at 4 seats. Disconnects use the generic
 // lobby `leave` path; the remaining client's owner injects a `concede` command for
-// the dropped seat. When local FFA/teams ships, bump `maxPlayers` to 4 — the relay
-// is seat-count-agnostic, so no other server change is needed.
+// the dropped seat. The relay is seat-count-agnostic; clients decide whether a
+// started room is a 2-player duel or a 4-player 2v2.
 const TACTICAL_ARENA_GAME_ID = "tactical-arena";
 
 export const definition = {
@@ -24,6 +24,6 @@ export const definition = {
   matchmaking: { strategy: "lobby" },
   lobbyGame: {
     gameId: TACTICAL_ARENA_GAME_ID,
-    lobbyLimits: { minPlayers: 2, maxPlayers: 2 },
+    lobbyLimits: { minPlayers: 2, maxPlayers: 4 },
   },
 };
