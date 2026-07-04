@@ -386,7 +386,17 @@ export function joinLobby(clientId, roomCode, identity = null) {
   return lobby;
 }
 
-export function doesLobbyMatchSearch(lobby, gameId, limits = null) {
+function sameLobbySettings(a = {}, b = {}) {
+  const left = sanitizeLobbySettings(a);
+  const right = sanitizeLobbySettings(b);
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (left[key] !== right[key]) return false;
+  }
+  return true;
+}
+
+export function doesLobbyMatchSearch(lobby, gameId, limits = null, settings = null) {
   const targetGameId = sanitizeLobbyGameId(gameId);
   if (lobby?.gameId !== targetGameId) return false;
   if (lobby?.isPrivate) return false;
@@ -396,14 +406,15 @@ export function doesLobbyMatchSearch(lobby, gameId, limits = null) {
     if (lobby.minPlayers !== searchLimits.minPlayers) return false;
     if (lobby.maxPlayers !== searchLimits.maxPlayers) return false;
   }
+  if (settings && !sameLobbySettings(lobby.settings, settings)) return false;
   return true;
 }
 
-export function findOpenLobby(gameId, limits = null) {
+export function findOpenLobby(gameId, limits = null, settings = null) {
   let best = null;
 
   for (const lobby of lobbies.values()) {
-    if (!doesLobbyMatchSearch(lobby, gameId, limits)) continue;
+    if (!doesLobbyMatchSearch(lobby, gameId, limits, settings)) continue;
     if (!best || lobby.createdAt < best.createdAt) best = lobby;
   }
 

@@ -40,10 +40,12 @@ export function lobbyPlayerCount(lobby) {
 }
 
 export function sanitizeLobbySettings(settings = {}) {
+  const matchType = typeof settings.matchType === "string" ? settings.matchType.trim().slice(0, 32) : "";
   return {
     penaltyWord: sanitizePenaltyWord(settings.penaltyWord || "ECHO"),
     packId: typeof settings.packId === "string" && settings.packId.trim() ? settings.packId.trim().slice(0, 32) : "pack_01",
     runFormat: typeof settings.runFormat === "string" && settings.runFormat.trim() ? settings.runFormat.trim().slice(0, 32) : "canon_10_stage",
+    matchType: matchType || "default",
     protocolVersion: Number.isFinite(Number(settings.protocolVersion)) ? Math.max(1, Math.floor(Number(settings.protocolVersion))) : 1,
   };
 }

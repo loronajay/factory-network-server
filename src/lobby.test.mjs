@@ -183,17 +183,19 @@ test("canLobbyOwnerUpdateSettings locks settings once startup or match flow has 
   assertEq(canLobbyOwnerUpdateSettings({ status: "started" }), false);
 });
 
-test("doesLobbyMatchSearch requires matching game and compatible player limits", () => {
+test("doesLobbyMatchSearch requires matching game, limits, and queued settings", () => {
   const lobby = {
     gameId: "bird-duty",
     status: "open",
     isPrivate: false,
     minPlayers: 2,
     maxPlayers: 2,
+    settings: { matchType: "duel" },
     members: new Set(["c_host"]),
   };
 
-  assertEq(doesLobbyMatchSearch(lobby, "bird-duty", { minPlayers: 2, maxPlayers: 2 }), true);
+  assertEq(doesLobbyMatchSearch(lobby, "bird-duty", { minPlayers: 2, maxPlayers: 2 }, { matchType: "duel" }), true);
+  assertEq(doesLobbyMatchSearch(lobby, "bird-duty", { minPlayers: 2, maxPlayers: 2 }, { matchType: "teams4" }), false);
   assertEq(doesLobbyMatchSearch(lobby, "bird-duty", { minPlayers: 4, maxPlayers: 4 }), false);
   assertEq(doesLobbyMatchSearch(lobby, "echo-duel", { minPlayers: 2, maxPlayers: 2 }), false);
 });

@@ -61,7 +61,7 @@ const handlers = {
   find_lobby({ clientId, data }) {
     const gameId = sanitizeLobbyGameId(data.gameId);
     const limits = sanitizeLobbyLimits(data.minPlayers, data.maxPlayers);
-    const existing = findOpenLobby(gameId, limits);
+    const existing = findOpenLobby(gameId, limits, data.settings);
     if (existing) {
       joinLobby(clientId, existing.roomCode, data.identity);
     } else {
