@@ -17,9 +17,21 @@ function broadcastBuildBuddyMatchState(lobby, messageType = "match_state") {
   if (!lobby?.buildBuddyMatch) return;
   lobby.buildBuddySyncSeq = Number(lobby.buildBuddySyncSeq || 0) + 1;
   const now = Date.now();
-  const snapshot = messageType === "stage_start"
-    ? serializeBuildBuddyStageStartMessage(lobby.buildBuddyMatch, lobby, now)
-    : serializeBuildBuddyMatchState(lobby.buildBuddyMatch, lobby, now);
+  let snapshot;
+  if (messageType === "stage_start") {
+    snapshot = serializeBuildBuddyStageStartMessage(lobby.buildBuddyMatch, lobby, now);
+  } else {
+    // Ship only the commands the room hasn't received yet, tracked by seq.
+    const sinceSeq = Number(lobby.buildBuddyBroadcastSeq || 0);
+    snapshot = serializeBuildBuddyMatchState(lobby.buildBuddyMatch, lobby, now, { sinceSeq });
+    lobby.buildBuddyBroadcastSeq = Number(lobby.buildBuddyMatch.commandSeq || 0);
+    // Those commands are now delivered and never re-read, so drop them from the
+    // authoritative log. This keeps the immutable per-input clone in the match
+    // engine O(1) instead of copying a log that grows with stage length.
+    lobby.buildBuddyMatch.runnerInputs.length = 0;
+    lobby.buildBuddyMatch.builderCommands.length = 0;
+    lobby.buildBuddyMatch.rejections.length = 0;
+  }
   broadcastToLobby(lobby.roomCode, {
     event: "message",
     scope: "lobby",
@@ -35,6 +47,7 @@ export const buildBuddyLobbyGame = {
 
   initMatch(lobby, startAt) {
     lobby.buildBuddySyncSeq = 0;
+    lobby.buildBuddyBroadcastSeq = 0;
     lobby.buildBuddyMatch = createBuildBuddyMatchState(lobby, startAt);
   },
 

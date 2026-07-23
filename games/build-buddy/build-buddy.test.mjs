@@ -162,6 +162,44 @@ test("Build Buddy serialization exposes accepted command cursors for client repl
   assertEq(snapshot.commands.builderCommands[0].seq, 2);
 });
 
+test("Build Buddy match snapshots ship only the command delta above sinceSeq and omit the raw log", () => {
+  let match = createBuildBuddyMatchState({
+    roomCode: "BUDDY3E",
+    ownerId: "c_host",
+    settings: { packId: "pack_01" },
+    members: new Set(["c_host", "c_guest"]),
+    seed: 123,
+  }, 1000);
+  match = applyBuildBuddyInputToMatch(match, "c_host", {
+    messageType: "runner_input",
+    value: JSON.stringify({ tick: 1, right: true }),
+  }, 1010);
+  match = applyBuildBuddyInputToMatch(match, "c_guest", {
+    messageType: "builder_command",
+    value: JSON.stringify({ tick: 2, action: "place", toolType: "platform", gridX: 80, gridY: 120 }),
+  }, 1012);
+  match = applyBuildBuddyInputToMatch(match, "c_host", {
+    messageType: "runner_input",
+    value: JSON.stringify({ tick: 3, left: true }),
+  }, 1014);
+
+  // A client that has already applied through seq 2 should receive only seq 3.
+  const delta = serializeBuildBuddyMatchState(match, { roomCode: "BUDDY3E" }, 1200, { sinceSeq: 2 });
+  assertEq(delta.commands.runnerInputs.length, 1);
+  assertEq(delta.commands.builderCommands.length, 0);
+  assertEq(delta.commands.runnerInputs[0].seq, 3);
+
+  // The heavy per-command log must not ride along on the wire payload.
+  assertEq(delta.runnerInputs, undefined);
+  assertEq(delta.builderCommands, undefined);
+  assertEq(delta.rejections, undefined);
+
+  // No cursor (full snapshot, e.g. lobby_started) still exposes everything.
+  const full = serializeBuildBuddyMatchState(match, { roomCode: "BUDDY3E" }, 1200);
+  assertEq(full.commands.runnerInputs.length, 2);
+  assertEq(full.commands.builderCommands.length, 1);
+});
+
 test("Build Buddy stage_start serialization matches the client stage-start contract", () => {
   let match = createBuildBuddyMatchState({
     roomCode: "BUDDY3D",

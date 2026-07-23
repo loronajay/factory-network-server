@@ -232,7 +232,7 @@ export function applyBuildBuddyDisconnectToMatch(match, clientId, now = Date.now
   return next;
 }
 
-export function serializeBuildBuddyMatchState(match, lobby = {}, now = Date.now()) {
+export function serializeBuildBuddyMatchState(match, lobby = {}, now = Date.now(), { sinceSeq = null } = {}) {
   const snapshot = cloneBuildBuddyMatch(match);
   snapshot.network = {
     roomCode: lobby?.roomCode || match.roomCode,
@@ -246,10 +246,23 @@ export function serializeBuildBuddyMatchState(match, lobby = {}, now = Date.now(
     stageIndex: snapshot.stageIndex,
     roles: { ...snapshot.roles },
   };
+  // Command delta. Clients replay commands by `seq` and ignore anything at or
+  // below the cursor they've already applied, so shipping the entire stage-long
+  // history on every input was the O(N^2) blowup behind the "relays get slower
+  // and slower, then the socket dies" reports. When `sinceSeq` is provided we
+  // include only the commands newer than what the room already has.
+  const threshold = Number.isFinite(Number(sinceSeq)) ? Number(sinceSeq) : -Infinity;
   snapshot.commands = {
-    runnerInputs: snapshot.runnerInputs.map((input) => ({ ...input })),
-    builderCommands: snapshot.builderCommands.map((command) => ({ ...command })),
+    runnerInputs: snapshot.runnerInputs.filter((input) => Number(input.seq) > threshold).map((input) => ({ ...input })),
+    builderCommands: snapshot.builderCommands.filter((command) => Number(command.seq) > threshold).map((command) => ({ ...command })),
   };
+  // The raw per-command logs are server-only bookkeeping — the client reads them
+  // exclusively through `commands` above. Strip them (and the rejection log) from
+  // the wire payload so a snapshot stays small and flat regardless of stage age,
+  // instead of carrying the full history twice.
+  delete snapshot.runnerInputs;
+  delete snapshot.builderCommands;
+  delete snapshot.rejections;
   return snapshot;
 }
 
