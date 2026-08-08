@@ -270,6 +270,16 @@ export function createSpeedDemonServerBridge({
    * other one staring at a tree that never resolves.
    */
   function tickActiveRooms() {
+    // Same containment: this runs on a shared interval, so a throw here would
+    // take down every game on the server, not only Speed Demon.
+    try {
+      sweepRooms();
+    } catch (error) {
+      console.error("[speed-demon] heartbeat:", error);
+    }
+  }
+
+  function sweepRooms() {
     for (const room of store.listRooms()) {
       // A round is only live between the tree and both drivers reporting in, so
       // those are the two phases where a timeout means anything.
@@ -319,7 +329,7 @@ export function createSpeedDemonServerBridge({
     leaveCurrentRoom(clientId, "left");
   }
 
-  function handleDisconnect(clientId) {
+  function handleClientDisconnect(clientId) {
     store.removeQueuedClient(clientId);
     leaveCurrentRoom(clientId, "disconnected");
     broadcastQueueStatus();
@@ -345,7 +355,30 @@ export function createSpeedDemonServerBridge({
     return store.hasRoomCode(roomCode);
   }
 
-  function handleMessage(clientId, data) {
+  /**
+   * The name matters: `src/router.mjs` calls `bridge.handleClientMessage`, and a
+   * bridge that exposes anything else throws on the first frame and takes the
+   * whole server process down with it. Same for `handleClientDisconnect`.
+   */
+  function handleClientMessage(clientId, data) {
+    // `src/router.mjs` calls this straight out of a `ws` message handler with no
+    // guard of its own, so anything that escapes here is an unhandled exception
+    // in an event emitter — which ends the Node process and every other match
+    // running on it. One room's bug must cost that room, not the server.
+    try {
+      return route(clientId, data);
+    } catch (error) {
+      emit(clientId, {
+        event: "error",
+        code: "INTERNAL",
+        message: "Something went wrong in that match",
+      });
+      console.error(`[speed-demon] ${data?.type ?? "message"} from ${clientId}:`, error);
+      return undefined;
+    }
+  }
+
+  function route(clientId, data) {
     const type = String(data?.type || "");
     switch (type) {
       case "find_match":
@@ -368,11 +401,12 @@ export function createSpeedDemonServerBridge({
   }
 
   return {
-    handleMessage,
-    handleDisconnect,
+    // These four names are the router's contract — see handleClientMessage.
+    handleClientMessage,
+    handleClientDisconnect,
+    tickActiveRooms,
     ownsClient,
     hasRoomCode,
-    tickActiveRooms,
     // Exposed for tests, which drive rooms directly rather than through sockets.
     getRoomForClient: (clientId) => store.getRoomForClient(clientId),
     getRoom: (roomCode) => store.getRoom(roomCode),

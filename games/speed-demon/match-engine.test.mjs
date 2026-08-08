@@ -153,6 +153,49 @@ test("a driver with no name still gets one", () => {
   assertEqual(engine.describe().players[0].displayName, "Driver");
 });
 
+test("two drivers claiming the same id are made distinct rather than rejected", () => {
+  // Signed-out drivers share a default profile, and two tabs of one browser
+  // share localStorage — so identical ids arrive in practice. `createMatch`
+  // refuses a match between two identical ids, and because the router calls the
+  // bridge inside a `ws` handler that throw ended the whole server process.
+  const engine = createSpeedDemonMatchEngine({ now: () => 0 });
+  engine.assignPlayer({ clientId: "c_1", playerId: "same", displayName: "Ana" });
+  engine.assignPlayer({ clientId: "c_2", playerId: "same", displayName: "Bo" });
+
+  const [a, b] = engine.describe().players;
+  assert(a.playerId !== b.playerId, "the two lanes must not share an id");
+  assertEqual(a.playerId, "same", "the first claim keeps the real id, so loadouts still resolve");
+  assert(b.playerId.includes("c_2"), "the collision is disambiguated by the socket the server issued");
+});
+
+test("a room of two identical ids still starts a round instead of throwing", () => {
+  const clock = fakeClock();
+  const engine = createSpeedDemonMatchEngine({ now: clock.now });
+  engine.assignPlayer({ clientId: "c_1", playerId: "same" });
+  engine.assignPlayer({ clientId: "c_2", playerId: "same" });
+  const start = engine.startRound();
+  assert(start, "the tree must go up rather than the process going down");
+  assertEqual(start.score.players.length, 2);
+});
+
+test("a driver with no id at all is still given a distinct one", () => {
+  const engine = createSpeedDemonMatchEngine({ now: () => 0 });
+  engine.assignPlayer({ clientId: "c_1", playerId: "" });
+  engine.assignPlayer({ clientId: "c_2" });
+  const [a, b] = engine.describe().players;
+  assert(a.playerId && b.playerId && a.playerId !== b.playerId, "two guests are two drivers");
+});
+
+test("the account a driver claims is kept apart from their match identity", () => {
+  const engine = createSpeedDemonMatchEngine({ now: () => 0 });
+  engine.assignPlayer({ clientId: "c_1", playerId: "acct-1" });
+  engine.assignPlayer({ clientId: "c_2", playerId: "acct-1" });
+  const seats = engine.players;
+  assertEqual(seats[0].accountId, "acct-1");
+  assertEqual(seats[1].accountId, "acct-1", "what they claim is presentation, not identity");
+  assert(seats[1].playerId !== seats[0].playerId, "identity is the server's to decide");
+});
+
 test("only the host can change the race", () => {
   const { engine } = seatedRoom();
   const byGuest = engine.setConfig("c_2", { distanceId: "mile" });
@@ -405,6 +448,47 @@ test("two rounds wins a best of three, and the match is over", () => {
   assertEqual(result.winnerId, "p1");
   assertEqual(engine.phase, PHASE_MATCH_OVER);
   assertEqual(engine.nextStep(), "match-over");
+});
+
+test("a round is decided once, however many times the drivers report in", () => {
+  // The client reports `done` when its run ends, and `liveRound` stays set until
+  // the verdict comes back — so a loop that re-sends every tick used to decide
+  // the round again on each message. Two of those and a best-of-three was over
+  // after a single race, which is exactly what happened in the browser.
+  const { engine, clock } = seatedRoom();
+  const start = engine.startRound();
+  clock.pastTheRace();
+  for (const [clientId, events] of Object.entries({ c_1: fastRun(), c_2: slowRun(30) })) {
+    engine.recordInputs(clientId, { round: start.round, attempt: start.attempt, events });
+    engine.recordDone(clientId, { round: start.round, attempt: start.attempt });
+  }
+
+  const first = engine.adjudicate();
+  assertEqual(first.score.players[0].wins, 1);
+
+  // Every further attempt must be refused outright.
+  for (let i = 0; i < 20; i += 1) {
+    assertEqual(engine.adjudicate(), null, "a round may only be decided once");
+  }
+  assertEqual(engine.match.wins.p1, 1, "and the scoreboard must not move");
+  assertEqual(engine.phase, PHASE_ROUND_OVER, "the match is still on round two, not over");
+});
+
+test("a flood of done messages cannot finish a best-of-three off one race", () => {
+  const { engine, clock } = seatedRoom();
+  const start = engine.startRound();
+  clock.pastTheRace();
+  engine.recordInputs("c_1", { round: start.round, attempt: start.attempt, events: fastRun() });
+  engine.recordInputs("c_2", { round: start.round, attempt: start.attempt, events: slowRun(30) });
+
+  // A client hammering `done`, as the real one did on every tick.
+  for (let i = 0; i < 50; i += 1) {
+    engine.recordDone("c_1", { round: start.round, attempt: start.attempt });
+    engine.recordDone("c_2", { round: start.round, attempt: start.attempt });
+    if (engine.roundIsOver()) engine.adjudicate();
+  }
+  assertEqual(engine.match.wins.p1, 1, "one race is one round");
+  assert(!engine.match.winnerId, "and one round does not win a best of three");
 });
 
 test("nextStep tells the bridge whether to re-run, move on, or stop", () => {

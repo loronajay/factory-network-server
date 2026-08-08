@@ -71,9 +71,15 @@ export const MODES = [
   {
     id: MODE_ONLINE,
     label: "Online Versus",
-    blurb: "Two cars side by side over a fixed distance. Jump the light twice and the round is lost.",
-    available: false,
-    note: "In development — offline modes only for now",
+    blurb: "Two cars side by side, best of three. Jump the light twice in a round and you forfeit it.",
+    available: true,
+    /**
+     * Online does not use the solo setup screen: the strip, the distance and the
+     * match length belong to the room both drivers are in, not to one of them.
+     * The shell reads this to send the player to the lobby instead.
+     */
+    online: true,
+    note: "Casual — quick search or a private room code",
     objective: {
       kind: OBJECTIVE_DISTANCE,
       label: "DISTANCE",

@@ -72,9 +72,13 @@ relay-only games (lovers-lost, battleshits, …) work with zero server code.
 
 A game's *folder* holds whatever its definition needs: lobby-based games
 (`echo-duel`, `build-buddy`) have a pure `*-match-engine.mjs` + a `*-lobby-game.mjs`
-adapter; the self-owning `circuit-siege` has its bridge; `sumorai` has only a
-seeded stage-plan; `creature-battler` / `cockpit-swarm` are just a strategy
-descriptor. `mini-tactics` is a **config-only lobby game** (2-4 players, FFA +
+adapter; the self-owning `circuit-siege` and `speed-demon` have bridges;
+`sumorai` has only a seeded stage-plan; `creature-battler` / `cockpit-swarm` are just a strategy
+descriptor. `speed-demon` is the **server-authoritative** one: its bridge owns the queue,
+the room codes, the christmas tree and the match, and it decides every round by
+*replaying both drivers' input logs* through a mirrored copy of the cabinet's
+pure physics under `games/speed-demon/shared/`. Clients send inputs and never a
+finishing time — see that folder's notes. `mini-tactics` is a **config-only lobby game** (2-4 players, FFA +
 2v2 teams): its `lobbyGame` carries `lobbyLimits` only — no match engine — because
 the match runs as deterministic client lockstep over the generic lobby relay
 (shared `seed` + ordered `members` from `lobby_started`; board size/format/squads
@@ -87,6 +91,18 @@ state-hash; a dropped seat is conceded by the remaining owner).
 2. Register it in the `import`s + `allDefinitions()` array in `games/registry.mjs`.
 3. Add a `.test.mjs` for any logic; if there's none, `games/registry.test.mjs`
    already covers strategy/settings resolution.
+
+**A bridge must export exactly `handleClientMessage`, `handleClientDisconnect`,
+`tickActiveRooms`, `ownsClient` and `hasRoomCode`.** `src/router.mjs` calls them
+unguarded, so a bridge naming one of them differently throws on the first frame
+it is handed — inside a `ws` message handler, which ends the whole process.
+`games/speed-demon/server-bridge.test.mjs` scrapes the router for every
+`bridge.*()` call and asserts the bridge answers all of them; copy that test when
+adding a bridge.
+
+**Wrap a bridge's own work in try/catch too.** Anything escaping
+`handleClientMessage` or `tickActiveRooms` takes down every match on the server,
+not just the one that went wrong.
 
 Do **not** add a gameId branch to anything in `src/`. The
 `src/no-game-literals.test.mjs` guardrail fails the build if a gameId literal
@@ -169,7 +185,16 @@ All of the following live in `src/state.mjs` and are imported wherever needed.
 
 ## Tests
 
-`npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `src/no-game-literals.test.mjs` (the game-agnostic guardrail), `games/registry.test.mjs` (strategy/settings/lobby resolution), `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`, and the three `games/circuit-siege/*.test.mjs` suites. Pure match engines and helpers are unit tested directly (no socket needed); each test file is self-contained and exits non-zero on failure.
+`npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `src/no-game-literals.test.mjs` (the game-agnostic guardrail), `games/registry.test.mjs` (strategy/settings/lobby resolution), `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`, the three `games/circuit-siege/*.test.mjs` suites, and the three `games/speed-demon/*.test.mjs` suites (replay/mirror guard, match engine, server bridge).
+
+**`games/speed-demon/replay.test.mjs` is a mirror guard, not a unit test.** Its
+`shared/` folder is a *copy* of the cabinet's pure sim, and the failure mode of
+any mirror is silent drift — the physics get retuned over there, this server
+keeps adjudicating on the old ones, and it hands rounds to the wrong car while
+every suite stays green. Both repos commit the same `golden-run.json` and both
+replay it to the same decimal. If it fails, re-run
+`node tools/mirror-sim.mjs` in `javascript-games/games/speed-demon` and copy the
+result across. Pure match engines and helpers are unit tested directly (no socket needed); each test file is self-contained and exits non-zero on failure.
 
 Queue status note: `queue_status` watchers now receive immediate and change-driven updates with `queueCounts`, `boyWaiting`, and `girlWaiting` for the requested game.
 

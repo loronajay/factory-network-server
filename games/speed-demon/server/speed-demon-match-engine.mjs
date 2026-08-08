@@ -114,7 +114,18 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
     }
     const player = {
       clientId,
-      playerId: typeof playerId === "string" && playerId ? playerId : `guest-${clientId}`,
+      // **Never the client's word alone.** Two sockets can genuinely arrive
+      // claiming the same id — signed-out drivers share a default profile, and
+      // two tabs of the same browser share localStorage — and a match between
+      // two identical ids is not a match. `createMatch` rejects it, and because
+      // the router calls the bridge inside a `ws` handler with no guard, that
+      // throw used to take the entire server process down with it: every room,
+      // not just this one. The id is made unique within the room instead of
+      // trusted, so a collision costs a suffix rather than everybody's match.
+      playerId: uniquePlayerId(playerId, clientId),
+      // What they actually claim to be, kept separately: it is what a public
+      // loadout lookup keys on, and it is presentation rather than identity.
+      accountId: typeof playerId === "string" ? playerId : "",
       displayName: sanitizeName(displayName),
       modelId: typeof modelId === "string" ? modelId : null,
       livery: livery ?? null,
@@ -268,6 +279,12 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
    */
   function adjudicate() {
     if (!state.round || !state.match) return null;
+    // **Once per round, ever.** A client reports `done` when its run ends, and a
+    // client that keeps saying so — a loop that re-sends every tick, or one
+    // doing it on purpose — would otherwise decide the round again on each
+    // message, awarding a win every time and finishing a best-of-three off a
+    // single race. The round is live only between the tree and this call.
+    if (state.phase !== PHASE_COUNTDOWN && state.phase !== PHASE_RUNNING) return null;
 
     const options = raceOptions();
     const runs = state.players.map((player) => {
@@ -400,6 +417,20 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
 
   function playerFor(clientId) {
     return state.players.find((player) => player.clientId === clientId) ?? null;
+  }
+
+  /**
+   * An id that is unique inside this room.
+   *
+   * A blank id, or one already taken by the driver in the other lane, is
+   * suffixed with the socket's own id — which the server issues and so knows to
+   * be unique. A genuine pair of distinct accounts keeps their real ids, which
+   * is what lets the public loadout endpoints resolve the opponent's car.
+   */
+  function uniquePlayerId(playerId, clientId) {
+    const claimed = typeof playerId === "string" ? playerId.trim() : "";
+    const taken = state.players.some((player) => player.playerId === claimed);
+    return claimed && !taken ? claimed : `${claimed || "guest"}#${clientId}`;
   }
 
   function raceOptions() {
