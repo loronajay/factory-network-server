@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "carId": "demon",
+  "gateId": "6-speed",
+  "distanceId": "quarter",
+  "countdownSeconds": 3,
+  "events": [
+    {
+      "t": 0,
+      "k": "s",
+      "v": 0
+    },
+    {
+      "t": 180,
+      "k": "t",
+      "v": 1
+    },
+    {
+      "t": 311,
+      "k": "t",
+      "v": 0
+    },
+    {
+      "t": 311,
+      "k": "c",
+      "v": 0
+    },
+    {
+      "t": 312,
+      "k": "g",
+      "v": 1
+    },
+    {
+      "t": 313,
+      "k": "g",
+      "v": 1
+    },
+    {
+      "t": 321,
+      "k": "t",
+      "v": 1
+    },
+    {
+      "t": 379,
+      "k": "t",
+      "v": 0
+    },
+    {
+      "t": 379,
+      "k": "c",
+      "v": 0
+    },
+    {
+      "t": 380,
+      "k": "g",
+      "v": 0
+    },
+    {
+      "t": 381,
+      "k": "g",
+      "v": 3
+    },
+    {
+      "t": 382,
+      "k": "g",
+      "v": 0
+    },
+    {
+      "t": 390,
+      "k": "t",
+      "v": 1
+    },
+    {
+      "t": 484,
+      "k": "t",
+      "v": 0
+    },
+    {
+      "t": 484,
+      "k": "c",
+      "v": 0
+    },
+    {
+      "t": 485,
+      "k": "g",
+      "v": 1
+    },
+    {
+      "t": 486,
+      "k": "g",
+      "v": 1
+    },
+    {
+      "t": 494,
+      "k": "t",
+      "v": 1
+    },
+    {
+      "t": 651,
+      "k": "t",
+      "v": 0
+    },
+    {
+      "t": 651,
+      "k": "c",
+      "v": 0
+    },
+    {
+      "t": 652,
+      "k": "g",
+      "v": 0
+    },
+    {
+      "t": 653,
+      "k": "g",
+      "v": 3
+    },
+    {
+      "t": 654,
+      "k": "g",
+      "v": 0
+    },
+    {
+      "t": 662,
+      "k": "t",
+      "v": 1
+    }
+  ],
+  "expected": {
+    "finishTime": 12.101887103329917,
+    "distance": 403.1042903347247,
+    "topSpeed": 51.98329052150709,
+    "reactionTime": 0,
+    "launchGrade": "holeshot",
+    "gear": 5,
+    "shifts": [
+      {
+        "grade": "perfect",
+        "reason": null,
+        "gear": 2,
+        "rpmAtEngage": 6889.987248664711,
+        "catchGrade": "clean",
+        "catchDelta": 0.013333333333332753
+      },
+      {
+        "grade": "perfect",
+        "reason": null,
+        "gear": 3,
+        "rpmAtEngage": 6877.09892295231,
+        "catchGrade": "clean",
+        "catchDelta": 0.013333333333332753
+      },
+      {
+        "grade": "perfect",
+        "reason": null,
+        "gear": 4,
+        "rpmAtEngage": 6856.413161741343,
+        "catchGrade": "clean",
+        "catchDelta": 0.013333333333332753
+      },
+      {
+        "grade": "perfect",
+        "reason": null,
+        "gear": 5,
+        "rpmAtEngage": 6856.595665466455,
+        "catchGrade": "clean",
+        "catchDelta": 0.013333333333335418
+      }
+    ]
+  }
+}
