@@ -20,6 +20,7 @@ import { RACE_DISTANCES, DEFAULT_DISTANCE_ID } from "./constants.mjs";
 
 export const MODE_DISTANCE = "distance";
 export const MODE_TIME_ATTACK = "time-attack";
+export const MODE_RIVAL = "rival";
 export const MODE_ONLINE = "online";
 
 /** What a mode measures. The race only ever sees one of these two. */
@@ -49,6 +50,37 @@ export const MODES = [
     label: "Distance Race",
     blurb: "One car, one strip, one time. Launch clean, and lift-shift-catch every gear over a fixed distance.",
     available: true,
+    objective: {
+      kind: OBJECTIVE_DISTANCE,
+      label: "DISTANCE",
+      options: DISTANCE_OPTIONS,
+      defaultId: DEFAULT_DISTANCE_ID,
+    },
+  },
+  {
+    id: MODE_RIVAL,
+    label: "Rival Race",
+    blurb: "Two cars, one strip, nobody watching. Pick somebody to beat — a driver from the roster, or your own best run.",
+    available: true,
+    /**
+     * The setup screen grows a fifth pane in this mode, and only in this mode.
+     * A flag rather than a pane list because that is all the difference is: the
+     * rival is picked *after* the objective, since which ghost exists depends on
+     * which board the run will file to.
+     */
+    rival: true,
+    /**
+     * Where a run in this mode files its time.
+     *
+     * A rival race is a distance race with company. The rival is in the other
+     * lane and cannot touch you — `sim/` has no lateral axis at all, so there is
+     * no mechanism by which their car could change yours — which means the run
+     * is physically identical to a solo one over the same distance and belongs
+     * on the same board. Giving it boards of its own would split one ladder in
+     * two and, worse, break the loop this mode exists for: beat your ghost, set
+     * a new best, race the new ghost.
+     */
+    recordsAs: MODE_DISTANCE,
     objective: {
       kind: OBJECTIVE_DISTANCE,
       label: "DISTANCE",
@@ -93,6 +125,19 @@ export const DEFAULT_MODE_ID = MODE_DISTANCE;
 
 export function modeById(id) {
   return MODES.find((mode) => mode.id === id) ?? null;
+}
+
+/**
+ * The mode whose boards this mode's runs are filed under — itself, unless it
+ * says otherwise.
+ *
+ * One indirection, in the catalog, so `records.js` never has to name a mode that
+ * borrows another's boards. A second mode wanting the same thing is a field on
+ * its row rather than a branch anywhere.
+ */
+export function boardModeId(modeId) {
+  const mode = modeById(modeId);
+  return mode?.recordsAs ?? modeId;
 }
 
 /** The modes a player can actually start. Locked ones still render, greyed. */

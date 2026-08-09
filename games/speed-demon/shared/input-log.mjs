@@ -141,49 +141,111 @@ export function throttleAt(log, tick) {
 }
 
 /**
- * Replays a log into a finished race.
+ * A log part-way through being played back: the race it has produced so far,
+ * and where in the event list it has reached.
  *
- * The tick shape here mirrors `init-game.js`'s loop exactly, and it has to:
- * discrete actions first, in order, then one `stepRace` with the tick's throttle
- * level. The live loop samples the throttle once per tick and uses that one
- * value for both `pressShift` and `stepRace`, so the level is constant across a
- * tick — which is what lets the replay resolve it up front and removes any
- * question of how a throttle edge and a clutch press on the same tick order
- * against each other.
+ * This exists because three callers want the *same* tick, one tick at a time,
+ * and only one of them wants to run it to the end. `replayRun` below is the
+ * batch caller; a rival car in a solo race is stepped alongside the player's own
+ * race, one tick per frame, and stopping to re-derive the whole run every frame
+ * would be quadratic in the length of the race. Sharing the playhead is what
+ * stops that second caller becoming a second, subtly different definition of
+ * what a tick is.
+ */
+export function createPlayhead(options, log) {
+  return {
+    race: createRace(options),
+    // Sorted here rather than trusted, because a log that arrived over the wire
+    // was assembled from packets. `mergeEvents` already sorts, but replay is the
+    // one place correctness depends on the order, so it establishes it itself.
+    events: [...(log?.events ?? [])].sort((a, b) => a.t - b.t),
+    cursor: 0,
+    throttle: 0,
+    // How many `stepRace` calls have been made. That is the same quantity
+    // `init-game.js` keeps as `raceTick`, and the invariant the whole log rests
+    // on: exactly one tick recorded per step taken.
+    tick: 0,
+  };
+}
+
+/**
+ * Advances a playhead by exactly one tick.
+ *
+ * The tick shape here mirrors `init-game.js`'s loop, and it has to: everything
+ * recorded on this tick, in the order it was recorded, then one `stepRace` with
+ * the tick's throttle level. The throttle is resolved across the whole tick
+ * before any event is applied — the live loop samples it once per frame and
+ * hands that one value to both `pressShift` and `stepRace`, so within a tick it
+ * is a constant. That is what settles how a lift and a clutch press landing on
+ * the same tick order against each other: the press sees the lift, which is the
+ * difference between arming the clutch and opening the gate, and so between two
+ * grades.
+ *
+ * Past the end of the log the throttle simply stays where it was left, which is
+ * both the correct reading of a complete log and the extrapolation the opponent
+ * reconstruction relies on.
+ */
+export function stepPlayhead(playhead) {
+  const { events, tick } = playhead;
+  let cursor = playhead.cursor;
+  let throttle = playhead.throttle;
+
+  const start = cursor;
+  while (cursor < events.length && events[cursor].t === tick) {
+    if (events[cursor].k === EVENT_THROTTLE) throttle = events[cursor].v;
+    cursor += 1;
+  }
+
+  let race = playhead.race;
+  for (let i = start; i < cursor; i += 1) {
+    race = applyEvent(race, events[i], throttle);
+  }
+
+  return { ...playhead, race: stepRace(race, { throttle }, TICK_SECONDS), cursor, throttle, tick: tick + 1 };
+}
+
+/** True once nothing in the log can change the race any further. */
+export function playheadSpent(playhead) {
+  return playhead.race.phase === FINISHED || playhead.cursor >= playhead.events.length;
+}
+
+/**
+ * Shifts every event so the run begins on tick zero, dropping anything before
+ * it. Returns the log unchanged when it already starts there.
+ *
+ * A recorded log carries the tick the driver *happened* to stage on, which is
+ * however long they sat on the line reading the screen. Replaying one against a
+ * fresh run — a ghost of a previous best, alongside the car now driving it —
+ * needs the two trees to go green together, and that is what this normalises.
+ * The alternative is a ghost that sits inert for four seconds because the
+ * player who set it did.
+ */
+export function rebaseToStart(log) {
+  const events = log?.events ?? [];
+  const start = events.find((event) => event.k === EVENT_START);
+  const offset = start ? start.t : 0;
+  if (offset === 0) {
+    return { throttle: log?.throttle ?? 0, events: [...events] };
+  }
+  return {
+    throttle: log?.throttle ?? 0,
+    events: events.filter((event) => event.t >= offset).map((event) => ({ ...event, t: event.t - offset })),
+  };
+}
+
+/**
+ * Replays a log into a finished race.
  *
  * `maxTicks` is a bound, not a duration: a log that never crosses the line (a
  * disconnect, or a malformed one from a client trying its luck) has to stop
  * somewhere rather than spinning the server.
  */
 export function replayRun(options, log, { maxTicks = MAX_REPLAY_TICKS } = {}) {
-  let race = createRace(options);
-  // Sorted here rather than trusted, because a log that arrived over the wire
-  // was assembled from packets. `mergeEvents` already sorts, but replay is the
-  // one place correctness depends on the order, so it establishes it itself.
-  const events = [...(log?.events ?? [])].sort((a, b) => a.t - b.t);
-
-  let cursor = 0;
-  let throttle = 0;
+  let head = createPlayhead(options, log);
   for (let tick = 0; tick <= maxTicks; tick += 1) {
-    // Everything on this tick, in the order it was recorded. The throttle is
-    // resolved across the whole tick before any of them are applied — the live
-    // loop samples it once per frame and hands that one value to both
-    // `pressShift` and `stepRace`, so within a tick it is a constant. That is
-    // what settles how a lift and a clutch press landing on the same tick order
-    // against each other: the press sees the lift, which is the difference
-    // between arming the clutch and opening the gate, and so between two grades.
-    const start = cursor;
-    while (cursor < events.length && events[cursor].t === tick) {
-      if (events[cursor].k === EVENT_THROTTLE) throttle = events[cursor].v;
-      cursor += 1;
-    }
-    for (let i = start; i < cursor; i += 1) {
-      race = applyEvent(race, events[i], throttle);
-    }
-
-    race = stepRace(race, { throttle }, TICK_SECONDS);
-    if (race.phase === FINISHED) {
-      return { race, ticks: tick + 1, complete: true };
+    head = stepPlayhead(head);
+    if (head.race.phase === FINISHED) {
+      return { race: head.race, ticks: tick + 1, complete: true };
     }
     // A race still in staging with no inputs left will never start, and
     // `stepRace` is inert on it — so walking the rest of the ceiling can only
@@ -191,11 +253,11 @@ export function replayRun(options, log, { maxTicks = MAX_REPLAY_TICKS } = {}) {
     // has to be simulated: a car that has been lifted off still coasts, and
     // rolling resistance is light enough that it can take a minute and a half
     // to trickle across a quarter mile. That is a real result, not a hang.
-    if (race.phase === STAGING && cursor >= events.length) {
-      return { race, ticks: tick + 1, complete: false };
+    if (head.race.phase === STAGING && head.cursor >= head.events.length) {
+      return { race: head.race, ticks: tick + 1, complete: false };
     }
   }
-  return { race, ticks: maxTicks + 1, complete: false };
+  return { race: head.race, ticks: maxTicks + 1, complete: false };
 }
 
 function applyEvent(race, event, throttle) {
