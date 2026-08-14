@@ -74,6 +74,11 @@ test("lobbyGame resolves lobby-based games and is null for the rest", () => {
   assert(lobbyGame("echo-duel"), "echo-duel should have a lobby game");
   assert(lobbyGame("build-buddy"), "build-buddy should have a lobby game");
   assert(lobbyGame("pot-of-greed"), "pot-of-greed should have a lobby game");
+  const yam = lobbyGame("yam-bowling");
+  assert(yam, "yam-bowling should have an authoritative lobby game");
+  assertEq(yam.lobbyLimits.minPlayers, 2);
+  assertEq(yam.lobbyLimits.maxPlayers, 2);
+  assertEq(typeof yam.handleMessage, "function");
   // mini-tactics is a config-only lobby game: limits but no match logic.
   const mt = lobbyGame("mini-tactics");
   assert(mt, "mini-tactics should have a lobby game");

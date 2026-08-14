@@ -1,0 +1,164 @@
+import { broadcastToLobby, sendLobbyUpdated } from "../../../src/lobby-bus.mjs";
+import {
+  YAM_BOWLING_GAME_ID,
+  YAM_BOWLING_PROTOCOL_VERSION,
+  YAM_BOWLING_RECONNECT_GRACE_MS,
+  applyYamDisconnect,
+  applyYamReconnect,
+  applyYamShot,
+  createYamMatchState,
+  requestYamRematch,
+  serializeYamMatch,
+} from "./yam-bowling-match-engine.mjs";
+
+function parseValue(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function cleanText(value, maxLength) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) : "";
+}
+
+function sanitizeYamProfile(lobby, clientId, raw) {
+  const canonical = lobby?.memberProfiles?.get(clientId) || {};
+  const characterSlug = cleanText(raw?.characterSlug, 64).toLowerCase();
+  return {
+    // The Factory identity accepted at lobby entry stays canonical. A later
+    // profile message may select a bowler, but cannot swap the account id.
+    playerId: cleanText(canonical.playerId, 64),
+    displayName: cleanText(canonical.displayName, 24) || "Player",
+    characterSlug: /^[a-z0-9-]{1,64}$/.test(characterSlug) ? characterSlug : "daisy-monroe",
+    protocolVersion: Number(raw?.protocolVersion) || 0,
+  };
+}
+
+function broadcastMatch(lobby, messageType = "yam_match") {
+  if (!lobby?.yamMatch) return;
+  broadcastToLobby(lobby.roomCode, {
+    event: "message",
+    scope: "lobby",
+    messageType,
+    value: JSON.stringify(serializeYamMatch(lobby.yamMatch, lobby, Date.now())),
+    senderId: "server",
+    roomCode: lobby.roomCode,
+  });
+}
+
+function syncLobbyStatus(lobby) {
+  if (!lobby?.yamMatch) return;
+  lobby.status = lobby.yamMatch.phase === "complete" ? "ended" : "started";
+}
+
+export const yamBowlingLobbyGame = {
+  gameId: YAM_BOWLING_GAME_ID,
+  lobbyLimits: { minPlayers: 2, maxPlayers: 2 },
+  reconnectGracePeriodMs: YAM_BOWLING_RECONNECT_GRACE_MS,
+
+  canStart(lobby) {
+    if (Number(lobby?.settings?.protocolVersion) !== YAM_BOWLING_PROTOCOL_VERSION) return false;
+    return [...(lobby?.members || [])].every((clientId) =>
+      lobby?.yamProfiles?.get(clientId)?.protocolVersion === YAM_BOWLING_PROTOCOL_VERSION
+    );
+  },
+
+  initMatch(lobby, startAt) {
+    lobby.yamMatch = createYamMatchState(lobby, startAt);
+    syncLobbyStatus(lobby);
+  },
+
+  afterStart(lobby) {
+    broadcastMatch(lobby);
+  },
+
+  startedPayloadExtras(lobby, serverNow) {
+    return lobby?.yamMatch
+      ? { authorityMode: "server", matchState: serializeYamMatch(lobby.yamMatch, lobby, serverNow) }
+      : {};
+  },
+
+  handleMessage(lobby, clientId, messageType, value) {
+    if (messageType === "yam_profile") {
+      const profile = sanitizeYamProfile(lobby, clientId, parseValue(value));
+      if (!(lobby.yamProfiles instanceof Map)) lobby.yamProfiles = new Map();
+      lobby.yamProfiles.set(clientId, profile);
+      sendLobbyUpdated(lobby);
+      return { handled: true };
+    }
+
+    if (messageType === "yam_shot") {
+      const applied = applyYamShot(lobby.yamMatch, clientId, parseValue(value), Date.now());
+      if (applied.error) return { handled: true, error: applied.error };
+      lobby.yamMatch = applied.match;
+      syncLobbyStatus(lobby);
+      broadcastMatch(lobby, lobby.status === "ended" ? "yam_match_ended" : "yam_match");
+      if (lobby.status === "ended") sendLobbyUpdated(lobby);
+      return { handled: true };
+    }
+
+    if (messageType === "yam_rematch") {
+      const rematch = requestYamRematch(lobby.yamMatch, clientId, Date.now());
+      lobby.yamMatch = rematch.match;
+      syncLobbyStatus(lobby);
+      broadcastMatch(lobby);
+      if (rematch.started) sendLobbyUpdated(lobby);
+      return { handled: true };
+    }
+
+    if (messageType === "yam_match" || messageType === "yam_match_ended" || messageType === "yam_roll_result") {
+      return {
+        handled: true,
+        error: { code: "SERVER_AUTHORITY", message: "Yam Bowling scores rolls on the Factory Network server." },
+      };
+    }
+    return { handled: false };
+  },
+
+  isMatchPendingStart() {
+    return false;
+  },
+
+  cancelPendingStart() {},
+
+  hasActiveMatch(lobby) {
+    return Boolean(lobby?.yamMatch);
+  },
+
+  applyDisconnect(lobby, clientId, now) {
+    if (!lobby?.yamMatch) return false;
+    let next = applyYamDisconnect(lobby.yamMatch, clientId, now);
+    // A suspended socket remains in lobby.members during the grace window. If
+    // generic leave already removed it, this is an explicit leave/expiry and
+    // the match should settle immediately instead of pausing forever.
+    if (!lobby.members?.has(clientId) && next?.phase === "paused") {
+      next = applyYamDisconnect(next, clientId, now);
+    }
+    if (next === lobby.yamMatch) return false;
+    lobby.yamMatch = next;
+    syncLobbyStatus(lobby);
+    return true;
+  },
+
+  applyReconnect(lobby, clientId, now) {
+    if (!lobby?.yamMatch) return false;
+    const next = applyYamReconnect(lobby.yamMatch, clientId, now);
+    if (next === lobby.yamMatch) return false;
+    lobby.yamMatch = next;
+    syncLobbyStatus(lobby);
+    return true;
+  },
+
+  broadcastAfterLeave(lobby) {
+    broadcastMatch(lobby, lobby?.status === "ended" ? "yam_match_ended" : "yam_match");
+    if (lobby?.status === "ended") sendLobbyUpdated(lobby);
+  },
+
+  broadcastAfterReconnect(lobby) {
+    broadcastMatch(lobby);
+  },
+
+  clearTimers() {},
+};
