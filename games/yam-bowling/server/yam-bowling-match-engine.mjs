@@ -11,6 +11,7 @@ export const YAM_BOWLING_RECONNECT_GRACE_MS = 30_000;
 
 const MODE_FRAMES = Object.freeze({ quick: 3, classic: 10 });
 const DEFAULT_CHARACTERS = ["daisy-monroe", "nia-brooks"];
+const DEFAULT_SKIN_ID = "canon";
 
 function clonePins(pins = []) {
   return pins.map((pin) => ({ ...pin }));
@@ -141,9 +142,25 @@ function playerFromLobby(lobby, clientId, index) {
     accountPlayerId: cleanText(yamProfile.playerId || lobbyProfile.playerId, "", 64),
     name: cleanText(yamProfile.displayName || lobbyProfile.displayName, `Player ${index + 1}`, 24),
     characterSlug: cleanText(yamProfile.characterSlug, DEFAULT_CHARACTERS[index] || DEFAULT_CHARACTERS[0], 64),
+    skinId: cleanText(yamProfile.skinId, DEFAULT_SKIN_ID, 40),
     type: "human",
     connected: true,
   };
+}
+
+// The house both bowlers see. The server picks it so the two clients cannot
+// disagree, but it never learns what a lane *is*: it publishes an opaque roll
+// and the client maps that onto its own lane catalog, the same split that keeps
+// the skin catalog off this server. Deriving the roll from the match identity
+// instead of Math.random keeps it stable across reconnects and re-serializes,
+// while a rematch bumps matchNumber and therefore moves the pair to a new lane.
+function rollLane(roomCode, seed, matchNumber) {
+  let hash = 0x811c9dc5;
+  for (const character of `${roomCode}:${seed}:${matchNumber}`) {
+    hash ^= character.codePointAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % 1_000_003;
 }
 
 function freshMatch({ players, modeId, roomCode, seed, matchNumber, now }) {
@@ -156,6 +173,7 @@ function freshMatch({ players, modeId, roomCode, seed, matchNumber, now }) {
     roomCode,
     seed,
     matchNumber,
+    laneRoll: rollLane(roomCode, seed, matchNumber),
     sessionId: `${YAM_BOWLING_GAME_ID}:${roomCode}:${seed}:${matchNumber}`,
     phase: "playing",
     status: "playing",
@@ -302,7 +320,7 @@ export function requestYamRematch(match, clientId, now = Date.now()) {
   if (!next.players.every((player) => next.rematchRequestedBy.includes(player.id))) return { match: next, started: false };
   return {
     match: freshMatch({
-      players: next.players.map(({ id, accountPlayerId, name, characterSlug, type }) => ({ id, accountPlayerId, name, characterSlug, type })),
+      players: next.players.map(({ id, accountPlayerId, name, characterSlug, skinId, type }) => ({ id, accountPlayerId, name, characterSlug, skinId, type })),
       modeId: next.modeId,
       roomCode: next.roomCode,
       seed: next.seed,
@@ -331,6 +349,7 @@ export function serializeYamMatch(match, lobby, serverNow = Date.now()) {
     roomCode: serial.roomCode,
     sessionId: serial.sessionId,
     modeId: serial.modeId,
+    laneRoll: serial.laneRoll,
     phase: serial.phase,
     rollNumber: serial.rollNumber,
     activeClientId: serial.phase === "complete" ? null : serial.players[serial.activePlayer]?.id || null,

@@ -14,6 +14,11 @@
 //   broadcastAfterLeave(lobby)              broadcast the post-disconnect match state
 //   hasActiveMatch(lobby)                   -> bool (suppresses the generic post-leave update)
 //   clearTimers(lobby)                      cancel any game timers on the lobby
+//
+// A game module may also set lobby.publicPlayerFields (Map<clientId, object>)
+// to decorate each roster entry in the lobby payload with public per-player
+// data such as a chosen character or cosmetic. Identity is merged last, so
+// those entries can never restate a player's id or name.
 import {
   lobbies,
   clientLobbies,

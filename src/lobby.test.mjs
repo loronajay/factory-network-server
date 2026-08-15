@@ -177,6 +177,32 @@ test("lobby snapshots expose the joined player roster to the shared display", ()
   assertEq(payload.displayClientId, "c_display");
 });
 
+test("lobby snapshots carry the game module's public per-player fields without letting them rewrite identity", () => {
+  const payload = buildLobbyPayload({
+    roomCode: "COSMET",
+    gameId: "pot-of-greed",
+    ownerId: "c_alex",
+    members: new Set(["c_alex", "c_morgan"]),
+    memberProfiles: new Map([
+      ["c_alex", { displayName: "Alex" }],
+      ["c_morgan", { displayName: "Morgan" }],
+    ]),
+    publicPlayerFields: new Map([
+      ["c_alex", { look: "gold", id: "spoofed", name: "Impostor" }],
+    ]),
+    minPlayers: 2,
+    maxPlayers: 2,
+    status: "open",
+    isPrivate: false,
+    settings: {},
+    startAt: null,
+  });
+  assertEq(payload.players[0].look, "gold");
+  assertEq(payload.players[0].id, "c_alex");
+  assertEq(payload.players[0].name, "Alex");
+  assertEq(payload.players[1].look, undefined);
+});
+
 test("canLobbyOwnerUpdateSettings locks settings once startup or match flow has begun", () => {
   assertEq(canLobbyOwnerUpdateSettings({ status: "open" }), true);
   assertEq(canLobbyOwnerUpdateSettings({ status: "countdown" }), false);

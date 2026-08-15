@@ -36,7 +36,11 @@ export function buildLobbyPayload(lobby) {
     isPrivate: !!lobby.isPrivate,
     settings: lobby.settings,
     members,
+    // A game module may publish extra public per-player fields (cosmetics, a
+    // chosen character) on lobby.publicPlayerFields. Identity is merged last so
+    // those fields can decorate a roster entry but never restate who it is.
     players: members.map((clientId, index) => ({
+      ...(lobby?.publicPlayerFields?.get(clientId) || {}),
       id: clientId,
       name: lobby?.memberProfiles?.get(clientId)?.displayName || `Player ${index + 1}`,
     })),

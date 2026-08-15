@@ -10,6 +10,7 @@ import {
   requestYamRematch,
   serializeYamMatch,
 } from "./server/yam-bowling-match-engine.mjs";
+import { yamBowlingLobbyGame } from "./server/yam-bowling-lobby-game.mjs";
 
 function createLobby(modeId = "quick") {
   return {
@@ -22,7 +23,7 @@ function createLobby(modeId = "quick") {
       ["socket-b", { playerId: "factory-b", displayName: "Blair" }],
     ]),
     yamProfiles: new Map([
-      ["socket-a", { playerId: "factory-a", displayName: "Alex", characterSlug: "daisy-monroe" }],
+      ["socket-a", { playerId: "factory-a", displayName: "Alex", characterSlug: "daisy-monroe", skinId: "maid" }],
       ["socket-b", { playerId: "factory-b", displayName: "Blair", characterSlug: "nia-brooks" }],
     ]),
   };
@@ -119,4 +120,109 @@ test("rematch requires both players and resets the authoritative scorecard", () 
   assert.equal(second.match.rollNumber, 0);
   assert.equal(second.match.players[0].score.total, 0);
   assert.notEqual(second.match.sessionId, match.sessionId);
+});
+
+test("equipped skins ride with each bowler into the authoritative match and any rematch", () => {
+  const match = createYamMatchState(createLobby(), 5000);
+  // The opponent only sees the skin the shooter equipped if the server carries it.
+  assert.deepEqual(match.players.map((player) => player.skinId), ["maid", "canon"]);
+
+  const snapshot = serializeYamMatch(match, { status: "started" }, 5000);
+  assert.deepEqual(snapshot.match.players.map((player) => player.skinId), ["maid", "canon"]);
+
+  match.phase = "complete";
+  const rematch = requestYamRematch(requestYamRematch(match, "socket-a", 7000).match, "socket-b", 7100);
+  assert.equal(rematch.started, true);
+  assert.deepEqual(rematch.match.players.map((player) => player.skinId), ["maid", "canon"]);
+});
+
+test("a yam profile publishes the bowler and skin to the lobby roster but never the identity", () => {
+  const lobby = createLobby();
+  lobby.status = "open";
+  yamBowlingLobbyGame.handleMessage(
+    lobby,
+    "socket-a",
+    "yam_profile",
+    JSON.stringify({ characterSlug: "Roxy-Chen", skinId: "swimsuit", playerId: "spoofed", displayName: "Impostor", protocolVersion: 1 }),
+  );
+
+  const profile = lobby.yamProfiles.get("socket-a");
+  assert.equal(profile.characterSlug, "roxy-chen");
+  assert.equal(profile.skinId, "swimsuit");
+  assert.equal(profile.playerId, "factory-a");
+  assert.equal(profile.displayName, "Alex");
+
+  assert.deepEqual(lobby.publicPlayerFields.get("socket-a"), { characterSlug: "roxy-chen", skinId: "swimsuit" });
+});
+
+test("an unusable skin id falls back to the classic look instead of a broken sprite path", () => {
+  const lobby = createLobby();
+  yamBowlingLobbyGame.handleMessage(
+    lobby,
+    "socket-b",
+    "yam_profile",
+    JSON.stringify({ characterSlug: "nia-brooks", skinId: "../../etc/passwd", protocolVersion: 1 }),
+  );
+  assert.equal(lobby.yamProfiles.get("socket-b").skinId, "canon");
+});
+
+test("the server rolls one shared lane per match without owning the lane catalog", () => {
+  const match = createYamMatchState(createLobby(), 5000);
+  assert.equal(Number.isInteger(match.laneRoll), true);
+  assert.equal(match.laneRoll >= 0, true);
+
+  // The roll is an opaque number, never a lane name: the client owns the catalog
+  // that turns it into artwork, exactly as it owns the skin catalog.
+  const serialized = JSON.stringify(serializeYamMatch(match, { status: "started" }, 6000));
+  assert.match(serialized, /"laneRoll":\d+/);
+  assert.doesNotMatch(serialized, /lane[A-Za-z]*Slug|crimson-crown/);
+});
+
+test("both bowlers are served the same lane for the life of a match", () => {
+  const lobby = createLobby();
+  const match = createYamMatchState(lobby, 5000);
+  const first = serializeYamMatch(match, lobby, 6000).laneRoll;
+
+  const afterShot = applyYamShot(match, "socket-a", gutterShot(), 6000).match;
+  assert.equal(serializeYamMatch(afterShot, lobby, 7000).laneRoll, first);
+
+  const paused = applyYamDisconnect(afterShot, "socket-b", 8000);
+  assert.equal(serializeYamMatch(paused, lobby, 8000).laneRoll, first);
+  const resumed = applyYamReconnect(paused, "socket-b", 9000);
+  assert.equal(serializeYamMatch(resumed, lobby, 9000).laneRoll, first);
+});
+
+test("a lane is reproducible from the match identity and differs between rooms", () => {
+  const repeated = createYamMatchState(createLobby(), 5000).laneRoll;
+  assert.equal(createYamMatchState(createLobby(), 9999).laneRoll, repeated);
+
+  const otherRoom = createLobby();
+  otherRoom.roomCode = "YAM99";
+  otherRoom.seed = 987654;
+  assert.notEqual(createYamMatchState(otherRoom, 5000).laneRoll, repeated);
+});
+
+test("rematches move the pair to a different lane", () => {
+  const lobby = createLobby();
+  let match = createYamMatchState(lobby, 5000);
+  match = { ...match, phase: "complete", status: "complete" };
+  requestYamRematch(match, "socket-a", 9000);
+  const rematch = requestYamRematch(
+    requestYamRematch(match, "socket-a", 9000).match,
+    "socket-b",
+    9100,
+  );
+  assert.equal(rematch.started, true);
+  assert.equal(rematch.match.matchNumber, 2);
+  assert.notEqual(rematch.match.laneRoll, match.laneRoll);
+});
+
+test("lane rolls spread across a catalog rather than sticking to one house", () => {
+  const rolls = new Set();
+  for (let seed = 0; seed < 40; seed += 1) {
+    const lobby = createLobby();
+    lobby.seed = seed;
+    rolls.add(createYamMatchState(lobby, 5000).laneRoll % 9);
+  }
+  assert.equal(rolls.size, 9, "every lane in a nine-lane catalog should be reachable");
 });

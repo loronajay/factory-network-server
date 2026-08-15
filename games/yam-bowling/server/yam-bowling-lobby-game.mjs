@@ -26,12 +26,17 @@ function cleanText(value, maxLength) {
 function sanitizeYamProfile(lobby, clientId, raw) {
   const canonical = lobby?.memberProfiles?.get(clientId) || {};
   const characterSlug = cleanText(raw?.characterSlug, 64).toLowerCase();
+  const skinId = cleanText(raw?.skinId, 40).toLowerCase();
   return {
     // The Factory identity accepted at lobby entry stays canonical. A later
     // profile message may select a bowler, but cannot swap the account id.
     playerId: cleanText(canonical.playerId, 64),
     displayName: cleanText(canonical.displayName, 24) || "Player",
     characterSlug: /^[a-z0-9-]{1,64}$/.test(characterSlug) ? characterSlug : "daisy-monroe",
+    // The server carries the equipped skin without owning the skin catalog: the
+    // slug shape is all it can check, and the client falls back to the classic
+    // look for any id it does not know.
+    skinId: /^[a-z0-9-]{1,40}$/.test(skinId) ? skinId : "canon",
     protocolVersion: Number(raw?.protocolVersion) || 0,
   };
 }
@@ -85,6 +90,10 @@ export const yamBowlingLobbyGame = {
       const profile = sanitizeYamProfile(lobby, clientId, parseValue(value));
       if (!(lobby.yamProfiles instanceof Map)) lobby.yamProfiles = new Map();
       lobby.yamProfiles.set(clientId, profile);
+      // Publish the look to the lobby roster so the other bowler sees the
+      // chosen character and skin on the pre-match card, not just in play.
+      if (!(lobby.publicPlayerFields instanceof Map)) lobby.publicPlayerFields = new Map();
+      lobby.publicPlayerFields.set(clientId, { characterSlug: profile.characterSlug, skinId: profile.skinId });
       sendLobbyUpdated(lobby);
       return { handled: true };
     }
