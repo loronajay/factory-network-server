@@ -15,6 +15,7 @@ const MIN_THROW_POWER = 0.08;
 const MIN_BALL_SPEED = 0.32;
 const MAX_BALL_SPEED = 0.95;
 const PHYSICS_DT = 1 / 180;
+const HOOK_CURVE_EXPONENT = 2.5;
 
 export const YAM_BALL_PROFILES = Object.freeze([
   { hookScale: 1, speedScale: 1, massScale: 1 },
@@ -68,19 +69,28 @@ function hookCurve(z, { power = 0.7 } = {}) {
   if (z <= breakpoint) return { progress: 0, slope: 0, curvature: 0 };
   const remainingLane = 1 - breakpoint;
   const progress = clamp((z - breakpoint) / remainingLane, 0, 1.15);
-  return { progress: progress * progress, slope: 2 * progress / remainingLane, curvature: 2 / (remainingLane * remainingLane) };
+  // Mirror the cabinet's late-bite curve exactly: preserve its head-pin target
+  // while carrying the steeper entry angle into authoritative deck physics.
+  const rackProgress = (RACK_FRONT_Z - breakpoint) / remainingLane;
+  const targetScale = Math.pow(rackProgress, 2 - HOOK_CURVE_EXPONENT);
+  return {
+    progress: targetScale * Math.pow(progress, HOOK_CURVE_EXPONENT),
+    slope: targetScale * HOOK_CURVE_EXPONENT * Math.pow(progress, HOOK_CURVE_EXPONENT - 1) / remainingLane,
+    curvature: targetScale * HOOK_CURVE_EXPONENT * (HOOK_CURVE_EXPONENT - 1)
+      * Math.pow(progress, HOOK_CURVE_EXPONENT - 2) / (remainingLane * remainingLane),
+  };
 }
 
 function hookStrength({ hook = 0, hookScale = 1, power = 0.7 } = {}) {
-  return hook * hookScale * 0.32 * (1.12 - clamp(power, 0, 1) * 0.25);
+  return hook * hookScale * 0.44 * (1.12 - clamp(power, 0, 1) * 0.25);
 }
 
-function trajectoryX(z, shot = {}) {
+export function trajectoryX(z, shot = {}) {
   const releaseProgress = clamp(z / 0.2, 0, 1);
   return (shot.position || 0) + (shot.aim || 0) * z + (shot.release || 0) * releaseProgress + hookStrength(shot) * hookCurve(z, shot).progress;
 }
 
-function trajectoryDerivative(z, shot = {}) {
+export function trajectoryDerivative(z, shot = {}) {
   const releaseSlope = z > 0 && z < 0.2 ? (shot.release || 0) / 0.2 : 0;
   return (shot.aim || 0) + releaseSlope + hookStrength(shot) * hookCurve(z, shot).slope;
 }

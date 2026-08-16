@@ -11,6 +11,7 @@ import {
   serializeYamMatch,
 } from "./server/yam-bowling-match-engine.mjs";
 import { yamBowlingLobbyGame } from "./server/yam-bowling-lobby-game.mjs";
+import { trajectoryDerivative, trajectoryX } from "./shared/yam-bowling-physics.mjs";
 
 function createLobby(modeId = "quick") {
   return {
@@ -32,6 +33,13 @@ function createLobby(modeId = "quick") {
 function gutterShot() {
   return { position: 0.46, aim: 0.45, hook: 1, power: 0.08, release: 0.035, ballIndex: 0, expectedRollNumber: 0 };
 }
+
+test("keeps the authoritative hook target and entry angle in sync with the cabinet", () => {
+  const shot = { position: 0.3, aim: -0.12, hook: -1, hookScale: 1, power: 0.78 };
+
+  assert.ok(Math.abs(trajectoryX(0.86, shot) - (-0.004853659947148564)) < 1e-12);
+  assert.ok(trajectoryDerivative(0.86, shot) < -1.6);
+});
 
 test("creates a two-player account-bound authoritative bowling match", () => {
   const match = createYamMatchState(createLobby(), 5000);
