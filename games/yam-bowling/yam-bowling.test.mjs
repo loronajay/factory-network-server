@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   YAM_BOWLING_GAME_ID,
   applyYamDisconnect,
-  applyYamEmote,
+  applyYamReaction,
   applyYamReconnect,
   applyYamShot,
   createYamMatchState,
@@ -34,8 +34,8 @@ function createLobby(modeId = "quick") {
           ballTrailId: "ball-trail:red-neon",
           strikeBurstId: "strike-burst:ember",
           victoryPoseId: "victory-pose:daisy-monroe:maid",
-          emoteId: "emote:cheer",
-          catchLineId: "catch-line:find-the-pocket",
+          emoteIds: ["emote:cheer", "emote:wink", "emote:shush"],
+          catchLineIds: ["catch-line:find-the-pocket", "catch-line:lights-on"],
         },
       }],
       ["socket-b", { playerId: "factory-b", displayName: "Blair", characterSlug: "nia-brooks" }],
@@ -160,8 +160,14 @@ test("equipped skins ride with each bowler into the authoritative match and any 
 test("presentation rides with each bowler through snapshots and rematches", () => {
   const match = createYamMatchState(createLobby(), 5000);
   assert.equal(match.players[0].presentation.ballTrailId, "ball-trail:red-neon");
-  assert.equal(match.players[0].presentation.emoteId, "emote:cheer");
-  assert.equal(match.players[0].presentation.catchLineId, "catch-line:find-the-pocket");
+  // A declared wheel is kept slot for slot and padded to full length, so an
+  // index the client sends always lands on something resolvable.
+  assert.deepEqual(match.players[0].presentation.emoteIds, [
+    "emote:cheer", "emote:wink", "emote:shush", "emote:nice-one",
+  ]);
+  assert.deepEqual(match.players[0].presentation.catchLineIds, [
+    "catch-line:find-the-pocket", "catch-line:lights-on", "catch-line:keep-it-clean", "catch-line:find-the-pocket",
+  ]);
   assert.equal(match.players[1].presentation.ballTrailId, "ball-trail:none");
 
   const snapshot = serializeYamMatch(match, { status: "started" }, 5000);
@@ -180,20 +186,58 @@ test("version 1 profiles remain startable while version 2 presentation rolls out
   assert.equal(yamBowlingLobbyGame.canStart(lobby), true);
 });
 
-test("emotes use the sender's frozen equipment and enforce a server cooldown", () => {
+test("reactions resolve a slot against frozen equipment and share one cooldown", () => {
   const match = createYamMatchState(createLobby(), 5000);
-  const first = applyYamEmote(match, "socket-a", 6000);
+  const first = applyYamReaction(match, "socket-a", "emote", 1, 6000);
   assert.equal(first.error, null);
   assert.deepEqual(first.event, {
     senderClientId: "socket-a",
-    emoteId: "emote:cheer",
+    reactionId: "emote:wink",
     sequence: 1,
   });
 
-  const spam = applyYamEmote(first.match, "socket-a", 6500);
-  assert.equal(spam.error.code, "EMOTE_COOLDOWN");
-  const second = applyYamEmote(first.match, "socket-a", 8000);
+  // The cooldown covers the channel, not one wheel: a spammer does not care
+  // whether the noise is a picture or a sentence.
+  const spam = applyYamReaction(first.match, "socket-a", "catch-line", 0, 6500);
+  assert.equal(spam.error.code, "REACTION_COOLDOWN");
+
+  const second = applyYamReaction(first.match, "socket-a", "catch-line", 1, 8000);
+  assert.equal(second.event.reactionId, "catch-line:lights-on");
   assert.equal(second.event.sequence, 2);
+});
+
+test("a reaction slot is resolved by the server, so a client cannot name what it sends", () => {
+  const match = createYamMatchState(createLobby(), 5000);
+
+  // Out of range falls back to the wheel's first entry rather than erroring: the
+  // wheel is cosmetic and a refusal would spend the cooldown on nothing.
+  assert.equal(applyYamReaction(match, "socket-a", "emote", 9, 6000).event.reactionId, "emote:cheer");
+  assert.equal(applyYamReaction(match, "socket-a", "emote", "two", 6000).event.reactionId, "emote:cheer");
+
+  // An unknown kind has no wheel to fall back to, so it is refused outright.
+  assert.equal(applyYamReaction(match, "socket-a", "chat", 0, 6000).error.code, "UNKNOWN_REACTION");
+
+  // The two rules that make the slot safe: not a player, and not a live match.
+  assert.equal(applyYamReaction(match, "socket-x", "emote", 0, 6000).error.code, "NOT_IN_MATCH");
+  assert.equal(
+    applyYamReaction({ ...match, phase: "complete" }, "socket-a", "emote", 0, 6000).error.code,
+    "MATCH_NOT_PLAYING",
+  );
+});
+
+test("a reaction broadcast carries the resolved id to the whole lobby", () => {
+  const lobby = createLobby();
+  yamBowlingLobbyGame.initMatch(lobby, 5000);
+  const handled = yamBowlingLobbyGame.handleMessage(
+    lobby,
+    "socket-a",
+    "yam_reaction",
+    JSON.stringify({ kind: "catch-line", slot: 1 }),
+  );
+
+  assert.equal(handled.handled, true);
+  assert.equal(handled.error, undefined);
+  assert.equal(lobby.yamMatch.reactionSequence, 1);
 });
 
 test("a yam profile publishes the bowler and skin to the lobby roster but never the identity", () => {
@@ -219,11 +263,16 @@ test("a yam profile publishes the bowler and skin to the lobby roster but never 
       ballTrailId: "ball-trail:none",
       strikeBurstId: "strike-burst:classic",
       victoryPoseId: "victory-pose:roxy-chen:canon",
-      emoteId: "emote:wave",
+      emoteIds: ["emote:wave", "emote:thumbs-up", "emote:good-luck", "emote:nice-one"],
+      catchLineIds: [
+        "catch-line:ready-to-roll",
+        "catch-line:good-game",
+        "catch-line:keep-it-clean",
+        "catch-line:find-the-pocket",
+      ],
       playerCardId: "player-card:roxy-chen",
       profileIconId: "",
       entranceId: "",
-      catchLineId: "catch-line:ready-to-roll",
     },
   });
 });

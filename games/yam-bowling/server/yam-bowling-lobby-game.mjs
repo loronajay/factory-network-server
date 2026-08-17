@@ -4,10 +4,11 @@ import {
   YAM_BOWLING_PROTOCOL_VERSION,
   YAM_BOWLING_RECONNECT_GRACE_MS,
   applyYamDisconnect,
-  applyYamEmote,
+  applyYamReaction,
   applyYamReconnect,
   applyYamShot,
   createYamMatchState,
+  reactionWheels,
   requestYamRematch,
   serializeYamMatch,
 } from "./yam-bowling-match-engine.mjs";
@@ -51,11 +52,16 @@ function sanitizeYamProfile(lobby, clientId, raw) {
         && /^victory-pose:[a-z0-9-]+:[a-z0-9-]+$/.test(victoryPoseId)
         ? victoryPoseId
         : `victory-pose:${resolvedCharacterSlug}:canon`,
-      emoteId: presentationValue(raw?.presentation?.emoteId, "emote", "emote:wave"),
+      // The reaction wheels: exactly four ids each, always, so the slot index a
+      // client sends mid-match is checked against a fixed length rather than
+      // against whatever list happened to arrive. Padding a short wheel here is
+      // what lets a client that predates the wheels still react instead of
+      // erroring. The padding rule itself lives in the match engine so this
+      // sanitizer and the one that freezes a match cannot disagree.
+      ...reactionWheels(raw?.presentation, presentationValue),
       playerCardId: presentationValue(raw?.presentation?.playerCardId, "player-card", `player-card:${resolvedCharacterSlug}`),
       profileIconId: presentationValue(raw?.presentation?.profileIconId, "profile-icon", ""),
       entranceId: presentationValue(raw?.presentation?.entranceId, "entrance", ""),
-      catchLineId: presentationValue(raw?.presentation?.catchLineId, "catch-line", "catch-line:ready-to-roll"),
     },
     protocolVersion: Number(raw?.protocolVersion) || 0,
   };
@@ -132,14 +138,15 @@ export const yamBowlingLobbyGame = {
       return { handled: true };
     }
 
-    if (messageType === "yam_emote") {
-      const applied = applyYamEmote(lobby.yamMatch, clientId, Date.now());
+    if (messageType === "yam_reaction") {
+      const request = parseValue(value);
+      const applied = applyYamReaction(lobby.yamMatch, clientId, request?.kind, request?.slot, Date.now());
       if (applied.error) return { handled: true, error: applied.error };
       lobby.yamMatch = applied.match;
       broadcastToLobby(lobby.roomCode, {
         event: "message",
         scope: "lobby",
-        messageType: "yam_emote",
+        messageType: "yam_reaction",
         value: JSON.stringify(applied.event),
         senderId: "server",
         roomCode: lobby.roomCode,

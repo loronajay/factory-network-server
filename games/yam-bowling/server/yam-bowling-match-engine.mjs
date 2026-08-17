@@ -8,11 +8,46 @@ import {
 export const YAM_BOWLING_GAME_ID = "yam-bowling";
 export const YAM_BOWLING_PROTOCOL_VERSION = 2;
 export const YAM_BOWLING_RECONNECT_GRACE_MS = 30_000;
-export const YAM_BOWLING_EMOTE_COOLDOWN_MS = 2_000;
+export const YAM_BOWLING_REACTION_COOLDOWN_MS = 2_000;
+// The two reaction wheels a bowler throws mid-match -- stickers and spoken
+// lines -- with their founding fallbacks in wheel order. The server does not own
+// the emote or catch-line catalogs any more than it owns the skin or lane
+// catalogs: it checks the slug shape and holds the wheels a client declared at
+// match start. What it does own is the mapping from a slot index to an id, which
+// is the whole reason the wire carries an index -- a client can pick between its
+// own four, and cannot name a fifth it never equipped.
+//
+// The cooldown is deliberately shared across both kinds. It is there to stop the
+// channel being spammed at an opponent, and a spammer does not care whether the
+// noise is a picture or a sentence.
+export const YAM_BOWLING_REACTION_WHEEL_DEFAULTS = Object.freeze({
+  emote: Object.freeze(["emote:wave", "emote:thumbs-up", "emote:good-luck", "emote:nice-one"]),
+  "catch-line": Object.freeze([
+    "catch-line:ready-to-roll",
+    "catch-line:good-game",
+    "catch-line:keep-it-clean",
+    "catch-line:find-the-pocket",
+  ]),
+});
+
+export const YAM_BOWLING_REACTION_WHEEL_FIELDS = Object.freeze({
+  emote: "emoteIds",
+  "catch-line": "catchLineIds",
+});
 
 const MODE_FRAMES = Object.freeze({ quick: 3, classic: 10 });
 const DEFAULT_CHARACTERS = ["daisy-monroe", "nia-brooks"];
 const DEFAULT_SKIN_ID = "canon";
+
+// The two wheels are arrays, so a shallow presentation spread would leave every
+// clone of a match sharing one list. Nothing mutates a frozen wheel today; a
+// shared mutable array between match revisions is the kind of thing that only
+// stops being harmless once something does.
+function clonePresentation(presentation = {}) {
+  const wheels = Object.fromEntries(Object.values(YAM_BOWLING_REACTION_WHEEL_FIELDS)
+    .map((field) => [field, [...(presentation?.[field] || [])]]));
+  return { ...presentation, ...wheels };
+}
 
 function clonePins(pins = []) {
   return pins.map((pin) => ({ ...pin }));
@@ -21,7 +56,7 @@ function clonePins(pins = []) {
 function clonePlayers(players = []) {
   return players.map((player) => ({
     ...player,
-    presentation: { ...player.presentation },
+    presentation: clonePresentation(player.presentation),
     frames: player.frames.map((frame) => [...frame]),
     score: { ...player.score, cumulative: [...player.score.cumulative] },
   }));
@@ -34,7 +69,7 @@ function cloneMatch(match) {
     winnerIds: [...match.winnerIds],
     pins: clonePins(match.pins),
     rematchRequestedBy: [...match.rematchRequestedBy],
-    emoteCooldowns: { ...(match.emoteCooldowns || {}) },
+    reactionCooldowns: { ...(match.reactionCooldowns || {}) },
     lastRoll: match.lastRoll
       ? { ...match.lastRoll, shot: { ...match.lastRoll.shot }, pinsBefore: clonePins(match.lastRoll.pinsBefore), pinsAfter: clonePins(match.lastRoll.pinsAfter) }
       : null,
@@ -51,6 +86,20 @@ function cleanText(value, fallback, maxLength) {
   return (text || fallback).slice(0, maxLength).trim() || fallback;
 }
 
+// Every declared wheel, padded to length and shape-checked against its kind's
+// own prefix. `item` is passed in rather than duplicated so the lobby's profile
+// sanitizer and this one cannot drift on what a valid id looks like.
+export function reactionWheels(raw, item) {
+  return Object.fromEntries(Object.entries(YAM_BOWLING_REACTION_WHEEL_FIELDS).map(([kind, field]) => [
+    field,
+    YAM_BOWLING_REACTION_WHEEL_DEFAULTS[kind].map((fallback, index) => item(
+      Array.isArray(raw?.[field]) ? raw[field][index] : "",
+      kind,
+      fallback,
+    )),
+  ]));
+}
+
 function presentationFromProfile(profile, characterSlug) {
   const raw = profile?.presentation || {};
   const item = (value, prefix, fallback) => {
@@ -65,11 +114,13 @@ function presentationFromProfile(profile, characterSlug) {
       && /^victory-pose:[a-z0-9-]+:[a-z0-9-]+$/.test(victoryPoseId)
       ? victoryPoseId
       : `victory-pose:${characterSlug}:canon`,
-    emoteId: item(raw.emoteId, "emote", "emote:wave"),
+    // Both wheels are frozen here, at match start, and never re-read from a
+    // later profile message -- so re-equipping mid-match cannot change what a
+    // slot index resolves to partway through a frame.
+    ...reactionWheels(raw, item),
     playerCardId: item(raw.playerCardId, "player-card", `player-card:${characterSlug}`),
     profileIconId: item(raw.profileIconId, "profile-icon", ""),
     entranceId: item(raw.entranceId, "entrance", ""),
-    catchLineId: item(raw.catchLineId, "catch-line", "catch-line:ready-to-roll"),
   };
 }
 
@@ -218,8 +269,8 @@ function freshMatch({ players, modeId, roomCode, seed, matchNumber, now }) {
     lastRoll: null,
     result: null,
     rematchRequestedBy: [],
-    emoteSequence: 0,
-    emoteCooldowns: {},
+    reactionSequence: 0,
+    reactionCooldowns: {},
     disconnectedAt: null,
     pausedPhase: null,
     startedAt: now,
@@ -305,25 +356,46 @@ export function applyYamShot(match, clientId, rawShot, now = Date.now()) {
   return { match: next, error: null };
 }
 
-export function applyYamEmote(match, clientId, now = Date.now()) {
+// Resolves a client-sent kind and wheel slot against the wheels frozen into the
+// match at start. An unknown kind is refused, because there is no wheel to fall
+// back to; an out-of-range slot within a known kind falls back to that wheel's
+// first entry rather than erroring, since the wheel is cosmetic and refusing
+// would spend the sender's cooldown on nothing.
+function reactionFromSlot(player, kind, slot) {
+  const field = YAM_BOWLING_REACTION_WHEEL_FIELDS[kind];
+  if (!field) return "";
+  const wheel = Array.isArray(player?.presentation?.[field]) ? player.presentation[field] : [];
+  const defaults = YAM_BOWLING_REACTION_WHEEL_DEFAULTS[kind];
+  const index = Number(slot);
+  const chosen = Number.isInteger(index) && index >= 0 && index < defaults.length ? wheel[index] : null;
+  return chosen || wheel[0] || defaults[0];
+}
+
+export function applyYamReaction(match, clientId, kind = "emote", slot = 0, now = Date.now()) {
   if (!match || match.phase !== "playing") {
-    return { match, event: null, error: error("MATCH_NOT_PLAYING", "Emotes are available during a live match.") };
+    return { match, event: null, error: error("MATCH_NOT_PLAYING", "Reactions are available during a live match.") };
   }
   const player = match.players.find((entry) => entry.id === clientId);
   if (!player) return { match, event: null, error: error("NOT_IN_MATCH", "That bowler is not in this match.") };
-  const lastSentAt = Number(match.emoteCooldowns?.[clientId]) || 0;
-  if (lastSentAt && now - lastSentAt < YAM_BOWLING_EMOTE_COOLDOWN_MS) {
-    return { match, event: null, error: error("EMOTE_COOLDOWN", "Wait a moment before sending another emote.") };
+  const reactionId = reactionFromSlot(player, kind, slot);
+  if (!reactionId) {
+    return { match, event: null, error: error("UNKNOWN_REACTION", "That reaction kind is not part of this match.") };
+  }
+  const lastSentAt = Number(match.reactionCooldowns?.[clientId]) || 0;
+  if (lastSentAt && now - lastSentAt < YAM_BOWLING_REACTION_COOLDOWN_MS) {
+    return { match, event: null, error: error("REACTION_COOLDOWN", "Wait a moment before reacting again.") };
   }
   const next = cloneMatch(match);
-  next.emoteSequence = (Number(next.emoteSequence) || 0) + 1;
-  next.emoteCooldowns[clientId] = now;
+  next.reactionSequence = (Number(next.reactionSequence) || 0) + 1;
+  next.reactionCooldowns[clientId] = now;
   return {
     match: next,
     event: {
       senderClientId: clientId,
-      emoteId: player.presentation?.emoteId || "emote:wave",
-      sequence: next.emoteSequence,
+      // The whole resolved id, not the slot: the receiving client reads the kind
+      // off its prefix, so a kind and an id can never arrive disagreeing.
+      reactionId,
+      sequence: next.reactionSequence,
     },
     error: null,
   };
