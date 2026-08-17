@@ -4,6 +4,7 @@ import {
   YAM_BOWLING_PROTOCOL_VERSION,
   YAM_BOWLING_RECONNECT_GRACE_MS,
   applyYamDisconnect,
+  applyYamEmote,
   applyYamReconnect,
   applyYamShot,
   createYamMatchState,
@@ -27,16 +28,35 @@ function sanitizeYamProfile(lobby, clientId, raw) {
   const canonical = lobby?.memberProfiles?.get(clientId) || {};
   const characterSlug = cleanText(raw?.characterSlug, 64).toLowerCase();
   const skinId = cleanText(raw?.skinId, 40).toLowerCase();
+  const presentationValue = (value, prefix, fallback) => {
+    const text = cleanText(value, 96).toLowerCase();
+    return new RegExp(`^${prefix}:[a-z0-9-]{1,64}$`).test(text) ? text : fallback;
+  };
+  const resolvedCharacterSlug = /^[a-z0-9-]{1,64}$/.test(characterSlug) ? characterSlug : "daisy-monroe";
+  const victoryPoseId = cleanText(raw?.presentation?.victoryPoseId, 96).toLowerCase();
   return {
     // The Factory identity accepted at lobby entry stays canonical. A later
     // profile message may select a bowler, but cannot swap the account id.
     playerId: cleanText(canonical.playerId, 64),
     displayName: cleanText(canonical.displayName, 24) || "Player",
-    characterSlug: /^[a-z0-9-]{1,64}$/.test(characterSlug) ? characterSlug : "daisy-monroe",
+    characterSlug: resolvedCharacterSlug,
     // The server carries the equipped skin without owning the skin catalog: the
     // slug shape is all it can check, and the client falls back to the classic
     // look for any id it does not know.
     skinId: /^[a-z0-9-]{1,40}$/.test(skinId) ? skinId : "canon",
+    presentation: {
+      ballTrailId: presentationValue(raw?.presentation?.ballTrailId, "ball-trail", "ball-trail:none"),
+      strikeBurstId: presentationValue(raw?.presentation?.strikeBurstId, "strike-burst", "strike-burst:classic"),
+      victoryPoseId: victoryPoseId.startsWith(`victory-pose:${resolvedCharacterSlug}:`)
+        && /^victory-pose:[a-z0-9-]+:[a-z0-9-]+$/.test(victoryPoseId)
+        ? victoryPoseId
+        : `victory-pose:${resolvedCharacterSlug}:canon`,
+      emoteId: presentationValue(raw?.presentation?.emoteId, "emote", "emote:wave"),
+      playerCardId: presentationValue(raw?.presentation?.playerCardId, "player-card", `player-card:${resolvedCharacterSlug}`),
+      profileIconId: presentationValue(raw?.presentation?.profileIconId, "profile-icon", ""),
+      entranceId: presentationValue(raw?.presentation?.entranceId, "entrance", ""),
+      catchLineId: presentationValue(raw?.presentation?.catchLineId, "catch-line", "catch-line:ready-to-roll"),
+    },
     protocolVersion: Number(raw?.protocolVersion) || 0,
   };
 }
@@ -64,9 +84,9 @@ export const yamBowlingLobbyGame = {
   reconnectGracePeriodMs: YAM_BOWLING_RECONNECT_GRACE_MS,
 
   canStart(lobby) {
-    if (Number(lobby?.settings?.protocolVersion) !== YAM_BOWLING_PROTOCOL_VERSION) return false;
+    if (![1, YAM_BOWLING_PROTOCOL_VERSION].includes(Number(lobby?.settings?.protocolVersion))) return false;
     return [...(lobby?.members || [])].every((clientId) =>
-      lobby?.yamProfiles?.get(clientId)?.protocolVersion === YAM_BOWLING_PROTOCOL_VERSION
+      [1, YAM_BOWLING_PROTOCOL_VERSION].includes(lobby?.yamProfiles?.get(clientId)?.protocolVersion)
     );
   },
 
@@ -93,7 +113,11 @@ export const yamBowlingLobbyGame = {
       // Publish the look to the lobby roster so the other bowler sees the
       // chosen character and skin on the pre-match card, not just in play.
       if (!(lobby.publicPlayerFields instanceof Map)) lobby.publicPlayerFields = new Map();
-      lobby.publicPlayerFields.set(clientId, { characterSlug: profile.characterSlug, skinId: profile.skinId });
+      lobby.publicPlayerFields.set(clientId, {
+        characterSlug: profile.characterSlug,
+        skinId: profile.skinId,
+        presentation: profile.presentation,
+      });
       sendLobbyUpdated(lobby);
       return { handled: true };
     }
@@ -105,6 +129,21 @@ export const yamBowlingLobbyGame = {
       syncLobbyStatus(lobby);
       broadcastMatch(lobby, lobby.status === "ended" ? "yam_match_ended" : "yam_match");
       if (lobby.status === "ended") sendLobbyUpdated(lobby);
+      return { handled: true };
+    }
+
+    if (messageType === "yam_emote") {
+      const applied = applyYamEmote(lobby.yamMatch, clientId, Date.now());
+      if (applied.error) return { handled: true, error: applied.error };
+      lobby.yamMatch = applied.match;
+      broadcastToLobby(lobby.roomCode, {
+        event: "message",
+        scope: "lobby",
+        messageType: "yam_emote",
+        value: JSON.stringify(applied.event),
+        senderId: "server",
+        roomCode: lobby.roomCode,
+      });
       return { handled: true };
     }
 

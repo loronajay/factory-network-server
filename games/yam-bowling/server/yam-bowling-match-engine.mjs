@@ -6,8 +6,9 @@ import {
 } from "../shared/yam-bowling-physics.mjs";
 
 export const YAM_BOWLING_GAME_ID = "yam-bowling";
-export const YAM_BOWLING_PROTOCOL_VERSION = 1;
+export const YAM_BOWLING_PROTOCOL_VERSION = 2;
 export const YAM_BOWLING_RECONNECT_GRACE_MS = 30_000;
+export const YAM_BOWLING_EMOTE_COOLDOWN_MS = 2_000;
 
 const MODE_FRAMES = Object.freeze({ quick: 3, classic: 10 });
 const DEFAULT_CHARACTERS = ["daisy-monroe", "nia-brooks"];
@@ -20,6 +21,7 @@ function clonePins(pins = []) {
 function clonePlayers(players = []) {
   return players.map((player) => ({
     ...player,
+    presentation: { ...player.presentation },
     frames: player.frames.map((frame) => [...frame]),
     score: { ...player.score, cumulative: [...player.score.cumulative] },
   }));
@@ -32,6 +34,7 @@ function cloneMatch(match) {
     winnerIds: [...match.winnerIds],
     pins: clonePins(match.pins),
     rematchRequestedBy: [...match.rematchRequestedBy],
+    emoteCooldowns: { ...(match.emoteCooldowns || {}) },
     lastRoll: match.lastRoll
       ? { ...match.lastRoll, shot: { ...match.lastRoll.shot }, pinsBefore: clonePins(match.lastRoll.pinsBefore), pinsAfter: clonePins(match.lastRoll.pinsAfter) }
       : null,
@@ -46,6 +49,28 @@ function normalizeModeId(value) {
 function cleanText(value, fallback, maxLength) {
   const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
   return (text || fallback).slice(0, maxLength).trim() || fallback;
+}
+
+function presentationFromProfile(profile, characterSlug) {
+  const raw = profile?.presentation || {};
+  const item = (value, prefix, fallback) => {
+    const text = cleanText(value, "", 96).toLowerCase();
+    return new RegExp(`^${prefix}:[a-z0-9-]{1,64}$`).test(text) ? text : fallback;
+  };
+  const victoryPoseId = cleanText(raw.victoryPoseId, "", 96).toLowerCase();
+  return {
+    ballTrailId: item(raw.ballTrailId, "ball-trail", "ball-trail:none"),
+    strikeBurstId: item(raw.strikeBurstId, "strike-burst", "strike-burst:classic"),
+    victoryPoseId: victoryPoseId.startsWith(`victory-pose:${characterSlug}:`)
+      && /^victory-pose:[a-z0-9-]+:[a-z0-9-]+$/.test(victoryPoseId)
+      ? victoryPoseId
+      : `victory-pose:${characterSlug}:canon`,
+    emoteId: item(raw.emoteId, "emote", "emote:wave"),
+    playerCardId: item(raw.playerCardId, "player-card", `player-card:${characterSlug}`),
+    profileIconId: item(raw.profileIconId, "profile-icon", ""),
+    entranceId: item(raw.entranceId, "entrance", ""),
+    catchLineId: item(raw.catchLineId, "catch-line", "catch-line:ready-to-roll"),
+  };
 }
 
 function isFinalFrameComplete(rolls) {
@@ -137,12 +162,14 @@ function recordRoll(match, knocked) {
 function playerFromLobby(lobby, clientId, index) {
   const lobbyProfile = lobby?.memberProfiles?.get(clientId) || {};
   const yamProfile = lobby?.yamProfiles?.get(clientId) || {};
+  const characterSlug = cleanText(yamProfile.characterSlug, DEFAULT_CHARACTERS[index] || DEFAULT_CHARACTERS[0], 64);
   return {
     id: clientId,
     accountPlayerId: cleanText(yamProfile.playerId || lobbyProfile.playerId, "", 64),
     name: cleanText(yamProfile.displayName || lobbyProfile.displayName, `Player ${index + 1}`, 24),
-    characterSlug: cleanText(yamProfile.characterSlug, DEFAULT_CHARACTERS[index] || DEFAULT_CHARACTERS[0], 64),
+    characterSlug,
     skinId: cleanText(yamProfile.skinId, DEFAULT_SKIN_ID, 40),
+    presentation: presentationFromProfile(yamProfile, characterSlug),
     type: "human",
     connected: true,
   };
@@ -191,6 +218,8 @@ function freshMatch({ players, modeId, roomCode, seed, matchNumber, now }) {
     lastRoll: null,
     result: null,
     rematchRequestedBy: [],
+    emoteSequence: 0,
+    emoteCooldowns: {},
     disconnectedAt: null,
     pausedPhase: null,
     startedAt: now,
@@ -276,6 +305,30 @@ export function applyYamShot(match, clientId, rawShot, now = Date.now()) {
   return { match: next, error: null };
 }
 
+export function applyYamEmote(match, clientId, now = Date.now()) {
+  if (!match || match.phase !== "playing") {
+    return { match, event: null, error: error("MATCH_NOT_PLAYING", "Emotes are available during a live match.") };
+  }
+  const player = match.players.find((entry) => entry.id === clientId);
+  if (!player) return { match, event: null, error: error("NOT_IN_MATCH", "That bowler is not in this match.") };
+  const lastSentAt = Number(match.emoteCooldowns?.[clientId]) || 0;
+  if (lastSentAt && now - lastSentAt < YAM_BOWLING_EMOTE_COOLDOWN_MS) {
+    return { match, event: null, error: error("EMOTE_COOLDOWN", "Wait a moment before sending another emote.") };
+  }
+  const next = cloneMatch(match);
+  next.emoteSequence = (Number(next.emoteSequence) || 0) + 1;
+  next.emoteCooldowns[clientId] = now;
+  return {
+    match: next,
+    event: {
+      senderClientId: clientId,
+      emoteId: player.presentation?.emoteId || "emote:wave",
+      sequence: next.emoteSequence,
+    },
+    error: null,
+  };
+}
+
 export function applyYamDisconnect(match, clientId, now = Date.now()) {
   if (!match || match.phase === "complete") return match;
   const index = match.players.findIndex((player) => player.id === clientId);
@@ -320,7 +373,9 @@ export function requestYamRematch(match, clientId, now = Date.now()) {
   if (!next.players.every((player) => next.rematchRequestedBy.includes(player.id))) return { match: next, started: false };
   return {
     match: freshMatch({
-      players: next.players.map(({ id, accountPlayerId, name, characterSlug, skinId, type }) => ({ id, accountPlayerId, name, characterSlug, skinId, type })),
+      players: next.players.map(({ id, accountPlayerId, name, characterSlug, skinId, presentation, type }) => ({
+        id, accountPlayerId, name, characterSlug, skinId, presentation: { ...presentation }, type,
+      })),
       modeId: next.modeId,
       roomCode: next.roomCode,
       seed: next.seed,

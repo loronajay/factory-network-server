@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   YAM_BOWLING_GAME_ID,
   applyYamDisconnect,
+  applyYamEmote,
   applyYamReconnect,
   applyYamShot,
   createYamMatchState,
@@ -24,7 +25,19 @@ function createLobby(modeId = "quick") {
       ["socket-b", { playerId: "factory-b", displayName: "Blair" }],
     ]),
     yamProfiles: new Map([
-      ["socket-a", { playerId: "factory-a", displayName: "Alex", characterSlug: "daisy-monroe", skinId: "maid" }],
+      ["socket-a", {
+        playerId: "factory-a",
+        displayName: "Alex",
+        characterSlug: "daisy-monroe",
+        skinId: "maid",
+        presentation: {
+          ballTrailId: "ball-trail:red-neon",
+          strikeBurstId: "strike-burst:ember",
+          victoryPoseId: "victory-pose:daisy-monroe:maid",
+          emoteId: "emote:cheer",
+          catchLineId: "catch-line:find-the-pocket",
+        },
+      }],
       ["socket-b", { playerId: "factory-b", displayName: "Blair", characterSlug: "nia-brooks" }],
     ]),
   };
@@ -144,6 +157,45 @@ test("equipped skins ride with each bowler into the authoritative match and any 
   assert.deepEqual(rematch.match.players.map((player) => player.skinId), ["maid", "canon"]);
 });
 
+test("presentation rides with each bowler through snapshots and rematches", () => {
+  const match = createYamMatchState(createLobby(), 5000);
+  assert.equal(match.players[0].presentation.ballTrailId, "ball-trail:red-neon");
+  assert.equal(match.players[0].presentation.emoteId, "emote:cheer");
+  assert.equal(match.players[0].presentation.catchLineId, "catch-line:find-the-pocket");
+  assert.equal(match.players[1].presentation.ballTrailId, "ball-trail:none");
+
+  const snapshot = serializeYamMatch(match, { status: "started" }, 5000);
+  assert.deepEqual(snapshot.match.players[0].presentation, match.players[0].presentation);
+
+  match.phase = "complete";
+  const rematch = requestYamRematch(requestYamRematch(match, "socket-a", 7000).match, "socket-b", 7100);
+  assert.deepEqual(rematch.match.players[0].presentation, match.players[0].presentation);
+});
+
+test("version 1 profiles remain startable while version 2 presentation rolls out", () => {
+  const lobby = createLobby();
+  lobby.settings.protocolVersion = 1;
+  lobby.yamProfiles.get("socket-a").protocolVersion = 1;
+  lobby.yamProfiles.get("socket-b").protocolVersion = 2;
+  assert.equal(yamBowlingLobbyGame.canStart(lobby), true);
+});
+
+test("emotes use the sender's frozen equipment and enforce a server cooldown", () => {
+  const match = createYamMatchState(createLobby(), 5000);
+  const first = applyYamEmote(match, "socket-a", 6000);
+  assert.equal(first.error, null);
+  assert.deepEqual(first.event, {
+    senderClientId: "socket-a",
+    emoteId: "emote:cheer",
+    sequence: 1,
+  });
+
+  const spam = applyYamEmote(first.match, "socket-a", 6500);
+  assert.equal(spam.error.code, "EMOTE_COOLDOWN");
+  const second = applyYamEmote(first.match, "socket-a", 8000);
+  assert.equal(second.event.sequence, 2);
+});
+
 test("a yam profile publishes the bowler and skin to the lobby roster but never the identity", () => {
   const lobby = createLobby();
   lobby.status = "open";
@@ -160,7 +212,20 @@ test("a yam profile publishes the bowler and skin to the lobby roster but never 
   assert.equal(profile.playerId, "factory-a");
   assert.equal(profile.displayName, "Alex");
 
-  assert.deepEqual(lobby.publicPlayerFields.get("socket-a"), { characterSlug: "roxy-chen", skinId: "swimsuit" });
+  assert.deepEqual(lobby.publicPlayerFields.get("socket-a"), {
+    characterSlug: "roxy-chen",
+    skinId: "swimsuit",
+    presentation: {
+      ballTrailId: "ball-trail:none",
+      strikeBurstId: "strike-burst:classic",
+      victoryPoseId: "victory-pose:roxy-chen:canon",
+      emoteId: "emote:wave",
+      playerCardId: "player-card:roxy-chen",
+      profileIconId: "",
+      entranceId: "",
+      catchLineId: "catch-line:ready-to-roll",
+    },
+  });
 });
 
 test("an unusable skin id falls back to the classic look instead of a broken sprite path", () => {
