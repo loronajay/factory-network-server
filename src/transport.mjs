@@ -2,8 +2,10 @@
 import crypto from "crypto";
 import { clients, rooms, lobbies } from "./state.mjs";
 
-export function makeId(prefix = "") {
-  return prefix + crypto.randomBytes(4).toString("hex");
+export const DEFAULT_MAX_BUFFERED_AMOUNT = 1_048_576;
+
+export function makeId(prefix = "", byteLength = 4) {
+  return prefix + crypto.randomBytes(byteLength).toString("hex");
 }
 
 export function makeRoomCode(length = 5) {
@@ -21,13 +23,25 @@ export function uniqueRoomCode() {
   return code;
 }
 
-export function send(ws, payload) {
-  if (ws && ws.readyState === ws.OPEN) {
+export function send(ws, payload, { maxBufferedAmount = DEFAULT_MAX_BUFFERED_AMOUNT } = {}) {
+  if (!ws || ws.readyState !== ws.OPEN) return false;
+  if (Number(ws.bufferedAmount || 0) > maxBufferedAmount) {
+    try {
+      ws.close?.(1013, "Client is not keeping up");
+    } catch {
+      ws.terminate?.();
+    }
+    return false;
+  }
+  try {
     ws.send(JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
   }
 }
 
 export function sendToClient(clientId, payload) {
   const ws = clients.get(clientId);
-  if (ws) send(ws, payload);
+  return ws ? send(ws, payload) : false;
 }

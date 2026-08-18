@@ -106,11 +106,28 @@ export function bridgeOwningClient(clientId) {
 }
 
 let heartbeat = null;
+export function tickBridgeInstances(entries, logger = console) {
+  for (const { def, instance } of entries) {
+    try {
+      instance.tickActiveRooms?.();
+    } catch (error) {
+      logger.error(`[registry] ${def.id || "game"} heartbeat:`, error);
+    }
+  }
+}
+
 export function startBridgeHeartbeats(intervalMs = 250) {
   if (heartbeat) return heartbeat;
   heartbeat = setInterval(() => {
-    for (const { instance } of ensureBridges()) instance.tickActiveRooms?.();
+    tickBridgeInstances(ensureBridges());
   }, intervalMs);
   if (typeof heartbeat.unref === "function") heartbeat.unref();
   return heartbeat;
+}
+
+export function stopBridgeHeartbeats() {
+  if (!heartbeat) return false;
+  clearInterval(heartbeat);
+  heartbeat = null;
+  return true;
 }

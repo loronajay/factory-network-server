@@ -1,76 +1,38 @@
-// Factory Network server — bootstrap only.
-//
-// Real-time WebSocket multiplayer backend for JayArcade games. This file wires
-// up Express + ws and delegates all behavior to focused modules:
-//   src/state.mjs        in-memory state (the single source of truth)
-//   src/transport.mjs    send / id + room-code helpers
-//   src/matchmaking.mjs  queues, sides, match_ready
-//   src/rooms.mjs        1v1 room lifecycle
-//   src/lobby.mjs        generic v2 lobby lifecycle
-//   src/router.mjs       WebSocket message dispatch
-//   games/registry.mjs   per-game integration (lobby games + self-owning bridges)
-//
-// No database, no persistence — all state is intentionally ephemeral.
-import express from "express";
-import http from "http";
-import { WebSocketServer } from "ws";
+// Factory Network production bootstrap. The reusable runtime lives separately
+// so tests can bind an ephemeral port and shut down cleanly.
+import { pathToFileURL } from "node:url";
 
-import {
-  PORT,
-  MAX_PLAYERS_PER_ROOM,
-  MAX_LOBBY_PLAYERS,
-  clients,
-  rooms,
-  lobbies,
-  matchQueues,
-  clientSessionTokens,
-} from "./src/state.mjs";
-import { makeId, send } from "./src/transport.mjs";
-import { handleClientMessage, handleClientDisconnect } from "./src/router.mjs";
-import { startBridgeHeartbeats } from "./games/registry.mjs";
+import { createFactoryNetworkServer } from "./src/server-runtime.mjs";
 
-const app = express();
-app.use(express.json());
+const runtime = createFactoryNetworkServer();
+const { app, server, wss } = runtime;
 
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+async function start() {
+  const address = await runtime.start();
+  const port = typeof address === "object" && address ? address.port : address;
+  console.log(`Factory Network server listening on port ${port}`);
+}
 
-startBridgeHeartbeats();
-
-// --- HTTP routes ---
-app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "factory-network-server",
-    clients: clients.size,
-    rooms: rooms.size,
-    lobbies: lobbies.size,
-    queues: Object.fromEntries([...matchQueues.entries()].map(([k, v]) => [k, v.length])),
-    maxPlayersPerRoom: MAX_PLAYERS_PER_ROOM,
-    maxLobbyPlayers: MAX_LOBBY_PLAYERS,
+function installShutdownSignal(signal) {
+  process.once(signal, async () => {
+    try {
+      await runtime.stop();
+      process.exitCode = 0;
+    } catch (error) {
+      console.error(`[server] ${signal} shutdown:`, error);
+      process.exitCode = 1;
+    }
   });
-});
+}
 
-app.get("/", (req, res) => {
-  res.send("Factory Network server is running.");
-});
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  installShutdownSignal("SIGINT");
+  installShutdownSignal("SIGTERM");
+  start().catch((error) => {
+    console.error("[server] startup:", error);
+    process.exitCode = 1;
+  });
+}
 
-// --- WebSocket handling ---
-wss.on("connection", (ws) => {
-  const connection = { clientId: makeId("c_") };
-  const sessionToken = makeId("s_");
-  clients.set(connection.clientId, ws);
-  clientSessionTokens.set(connection.clientId, sessionToken);
-
-  send(ws, { event: "connected", clientId: connection.clientId, sessionToken });
-
-  ws.on("message", (raw) => handleClientMessage(connection.clientId, ws, raw, connection));
-  ws.on("close", () => handleClientDisconnect(connection.clientId, "disconnect"));
-  ws.on("error", () => handleClientDisconnect(connection.clientId, "error"));
-});
-
-server.listen(PORT, () => {
-  console.log(`Factory Network server listening on port ${PORT}`);
-});
-
-export { app, server, wss };
+export { app, server, wss, runtime, start };

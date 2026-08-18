@@ -13,9 +13,11 @@ import {
   roomGameIds,
   matchQueues,
   lobbies,
+  suspendedLobbySessions,
 } from "./state.mjs";
 import { send, sendToClient, uniqueRoomCode } from "./transport.mjs";
 import { sanitizeRoomGameId, sanitizeLobbyGameId, sanitizeLobbyLimits } from "./util.mjs";
+import { validateClientFrame } from "./protocol.mjs";
 import {
   setClientSide,
   leaveQueue,
@@ -273,6 +275,21 @@ export function handleClientMessage(clientId, ws, raw, connection = null) {
     return;
   }
 
+  const validation = validateClientFrame(data);
+  if (!validation.ok) {
+    send(ws, { event: "error", code: "BAD_MESSAGE", message: validation.message });
+    return;
+  }
+
+  try {
+    dispatchClientMessage(clientId, ws, data, connection);
+  } catch (error) {
+    send(ws, { event: "error", code: "INTERNAL", message: "Something went wrong while handling that message" });
+    console.error(`[router] ${String(data.type || "message")} from ${clientId}:`, error);
+  }
+}
+
+function dispatchClientMessage(clientId, ws, data, connection) {
   // Self-owning game bridges (e.g. Circuit Siege) get first claim on a message.
   const bridge = routeToBridge(clientId, data);
   if (bridge) {
@@ -289,17 +306,32 @@ export function handleClientMessage(clientId, ws, raw, connection = null) {
 }
 
 export function handleClientDisconnect(clientId, reason) {
-  const bridge = bridgeOwningClient(clientId);
-  if (bridge) {
-    bridge.handleClientDisconnect(clientId, reason);
-  } else {
-    const removedQueueKey = leaveQueue(clientId);
-    if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
-    leaveRoom(clientId, reason);
+  // A socket may emit both `error` and `close`. If the first event suspended a
+  // reconnectable seat, the second event must not immediately evict it.
+  if (!clients.has(clientId) && suspendedLobbySessions.has(clientId)) return;
+
+  try {
+    const bridge = bridgeOwningClient(clientId);
+    if (bridge) {
+      bridge.handleClientDisconnect(clientId, reason);
+    } else {
+      const removedQueueKey = leaveQueue(clientId);
+      if (removedQueueKey) broadcastQueueStatus(getGameIdFromQueueKey(removedQueueKey));
+      leaveRoom(clientId, reason);
+    }
+  } catch (error) {
+    console.error(`[router] disconnect for ${clientId}:`, error);
   }
-  if (!suspendLobbyClient(clientId, reason)) leaveLobby(clientId, reason);
-  leaveDisplayLobby(clientId, reason);
-  clientSides.delete(clientId);
-  clientQueueWatch.delete(clientId);
-  clients.delete(clientId);
+
+  try {
+    if (!suspendLobbyClient(clientId, reason)) leaveLobby(clientId, reason);
+    leaveDisplayLobby(clientId, reason);
+  } catch (error) {
+    console.error(`[router] lobby disconnect for ${clientId}:`, error);
+  } finally {
+    clientSides.delete(clientId);
+    clientQueueWatch.delete(clientId);
+    clients.delete(clientId);
+    if (!suspendedLobbySessions.has(clientId)) clientSessionTokens.delete(clientId);
+  }
 }

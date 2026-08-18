@@ -14,12 +14,12 @@ export function clampInt(value, min, max, fallback) {
 
 export function sanitizeRoomGameId(value) {
   const gameId = typeof value === "string" ? value.trim() : "";
-  return gameId || "default";
+  return gameId.slice(0, 64) || "default";
 }
 
 export function sanitizeLobbyGameId(value) {
   const gameId = typeof value === "string" ? value.trim() : "";
-  return gameId || "default";
+  return gameId.slice(0, 64) || "default";
 }
 
 export function sanitizePenaltyWord(value) {
@@ -46,6 +46,12 @@ export function sanitizeLobbySettings(settings = {}) {
     packId: typeof settings.packId === "string" && settings.packId.trim() ? settings.packId.trim().slice(0, 32) : "pack_01",
     runFormat: typeof settings.runFormat === "string" && settings.runFormat.trim() ? settings.runFormat.trim().slice(0, 32) : "canon_10_stage",
     matchType: matchType || "default",
+    // Whether the match counts toward a competitive record. It lives in lobby
+    // settings rather than in a game's own message because matchmaking compares
+    // settings: two queues that disagree on the stakes must never be paired, and
+    // sameLobbySettings gets that for free from a primitive field. A game that
+    // never sends it stays false on both sides and is unaffected.
+    ranked: settings.ranked === true,
     protocolVersion: Number.isFinite(Number(settings.protocolVersion)) ? Math.max(1, Math.floor(Number(settings.protocolVersion))) : 1,
   };
 }

@@ -241,11 +241,15 @@ function rollLane(roomCode, seed, matchNumber) {
   return (hash >>> 0) % 1_000_003;
 }
 
-function freshMatch({ players, modeId, roomCode, seed, matchNumber, now }) {
+function freshMatch({ players, modeId, ranked = false, roomCode, seed, matchNumber, now }) {
   const frames = MODE_FRAMES[modeId];
   return {
     gameId: YAM_BOWLING_GAME_ID,
     modeId,
+    // Frozen at creation, exactly like the mode and the lane roll. A client asks
+    // the platform to move ELO only for a match the server called ranked, so the
+    // stakes cannot be renegotiated once the first ball is thrown.
+    ranked: ranked === true,
     playType: "online",
     cpuLevelId: "casual",
     roomCode,
@@ -285,6 +289,7 @@ export function createYamMatchState(lobby, startAt = Date.now()) {
   return freshMatch({
     players: memberIds.map((clientId, index) => playerFromLobby(lobby, clientId, index)),
     modeId,
+    ranked: lobby?.settings?.ranked === true,
     roomCode: cleanText(lobby?.roomCode, "ROOM", 16),
     seed: Number.isFinite(Number(lobby?.seed)) ? Math.floor(Number(lobby.seed)) : 0,
     matchNumber: 1,
@@ -449,6 +454,9 @@ export function requestYamRematch(match, clientId, now = Date.now()) {
         id, accountPlayerId, name, characterSlug, skinId, presentation: { ...presentation }, type,
       })),
       modeId: next.modeId,
+      // A rematch keeps the stakes it was agreed under: the lobby settings are
+      // locked once a match starts, so there is nowhere for them to have changed.
+      ranked: next.ranked === true,
       roomCode: next.roomCode,
       seed: next.seed,
       matchNumber: next.matchNumber + 1,
@@ -476,6 +484,7 @@ export function serializeYamMatch(match, lobby, serverNow = Date.now()) {
     roomCode: serial.roomCode,
     sessionId: serial.sessionId,
     modeId: serial.modeId,
+    ranked: serial.ranked === true,
     laneRoll: serial.laneRoll,
     phase: serial.phase,
     rollNumber: serial.rollNumber,

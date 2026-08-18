@@ -14,11 +14,11 @@ import {
 import { yamBowlingLobbyGame } from "./server/yam-bowling-lobby-game.mjs";
 import { trajectoryDerivative, trajectoryX } from "./shared/yam-bowling-physics.mjs";
 
-function createLobby(modeId = "quick") {
+function createLobby(modeId = "quick", ranked = false) {
   return {
     roomCode: "YAM42",
     seed: 1234,
-    settings: { matchType: modeId, protocolVersion: 1 },
+    settings: { matchType: modeId, ranked, protocolVersion: 1 },
     members: new Set(["socket-a", "socket-b"]),
     memberProfiles: new Map([
       ["socket-a", { playerId: "factory-a", displayName: "Alex" }],
@@ -286,6 +286,34 @@ test("an unusable skin id falls back to the classic look instead of a broken spr
     JSON.stringify({ characterSlug: "nia-brooks", skinId: "../../etc/passwd", protocolVersion: 1 }),
   );
   assert.equal(lobby.yamProfiles.get("socket-b").skinId, "canon");
+});
+
+test("the stakes are taken from the lobby, frozen into the match, and served to both clients", () => {
+  const casual = createYamMatchState(createLobby("quick", false), 5000);
+  assert.equal(casual.ranked, false);
+  assert.equal(serializeYamMatch(casual, { status: "started" }, 6000).ranked, false);
+
+  const ranked = createYamMatchState(createLobby("quick", true), 5000);
+  assert.equal(ranked.ranked, true);
+  assert.equal(serializeYamMatch(ranked, { status: "started" }, 6000).ranked, true);
+});
+
+test("a lobby that never declares stakes is casual, so ELO is opt-in", () => {
+  const lobby = createLobby();
+  delete lobby.settings.ranked;
+  assert.equal(createYamMatchState(lobby, 5000).ranked, false);
+  assert.equal(createYamMatchState({ ...lobby, settings: undefined }, 5000).ranked, false);
+  // A truthy-but-not-true value is not consent to stake a rating.
+  assert.equal(createYamMatchState(createLobby("quick", "yes"), 5000).ranked, false);
+});
+
+test("a rematch is bowled for the stakes the pair agreed to", () => {
+  let match = createYamMatchState(createLobby("quick", true), 5000);
+  match = { ...match, phase: "complete", result: { reason: "score", winnerClientId: "socket-a" } };
+  const rematch = requestYamRematch(requestYamRematch(match, "socket-a", 7000).match, "socket-b", 7100);
+  assert.equal(rematch.started, true);
+  assert.equal(rematch.match.ranked, true);
+  assert.notEqual(rematch.match.sessionId, match.sessionId);
 });
 
 test("the server rolls one shared lane per match without owning the lane catalog", () => {

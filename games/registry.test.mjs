@@ -2,6 +2,7 @@ import {
   lobbyGame,
   matchmakingStrategy,
   matchSettings,
+  tickBridgeInstances,
 } from "./registry.mjs";
 
 let passed = 0;
@@ -93,6 +94,26 @@ test("lobbyGame resolves lobby-based games and is null for the rest", () => {
   assertEq(typeof ta.handleMessage, "undefined");
   assertEq(lobbyGame("sumorai"), null);
   assertEq(lobbyGame("nope"), null);
+});
+
+test("one broken bridge heartbeat does not prevent the other games from ticking", () => {
+  let healthyTicks = 0;
+  const errors = [];
+  tickBridgeInstances([
+    {
+      def: { id: "broken-game" },
+      instance: { tickActiveRooms() { throw new Error("boom"); } },
+    },
+    {
+      def: { id: "healthy-game" },
+      instance: { tickActiveRooms() { healthyTicks++; } },
+    },
+  ], {
+    error(...args) { errors.push(args); },
+  });
+
+  assertEq(healthyTicks, 1);
+  assertEq(errors.length, 1);
 });
 
 console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);

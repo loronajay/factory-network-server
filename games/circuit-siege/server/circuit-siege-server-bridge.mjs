@@ -302,7 +302,7 @@ export function createCircuitSiegeServerBridge({
     emit(clientId, { event: "search_cancelled" });
   }
 
-  function handleClientMessage(clientId, message) {
+  function routeClientMessage(clientId, message) {
     if (!message || typeof message !== "object") return;
 
     if (message.type === "queue_status") {
@@ -340,12 +340,26 @@ export function createCircuitSiegeServerBridge({
     }
   }
 
+  function handleClientMessage(clientId, message) {
+    try {
+      return routeClientMessage(clientId, message);
+    } catch (error) {
+      emit(clientId, {
+        event: "error",
+        code: "INTERNAL",
+        message: "Something went wrong in that match",
+      });
+      console.error(`[circuit-siege] ${message?.type ?? "message"} from ${clientId}:`, error);
+      return undefined;
+    }
+  }
+
   function handleClientDisconnect(clientId, reason = "disconnect") {
     store.removeQueuedClient(clientId);
     leaveCurrentRoom(clientId, reason, false);
   }
 
-  function tickActiveRooms() {
+  function sweepActiveRooms() {
     for (const room of store.listRooms()) {
       const result = room.engine.tick(now());
       if (!result.ok) continue;
@@ -354,6 +368,14 @@ export function createCircuitSiegeServerBridge({
       if (result.snapshot.phase === "ended") {
         store.deleteRoom(room.roomCode);
       }
+    }
+  }
+
+  function tickActiveRooms() {
+    try {
+      sweepActiveRooms();
+    } catch (error) {
+      console.error("[circuit-siege] heartbeat:", error);
     }
   }
 

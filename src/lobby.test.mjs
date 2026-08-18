@@ -226,6 +226,30 @@ test("doesLobbyMatchSearch requires matching game, limits, and queued settings",
   assertEq(doesLobbyMatchSearch(lobby, "echo-duel", { minPlayers: 2, maxPlayers: 2 }), false);
 });
 
+test("a ranked search never joins a casual queue, and a game that omits stakes is unaffected", () => {
+  const limits = { minPlayers: 2, maxPlayers: 2 };
+  const casualLobby = {
+    gameId: "yam-bowling",
+    status: "open",
+    isPrivate: false,
+    minPlayers: 2,
+    maxPlayers: 2,
+    settings: { matchType: "quick", ranked: false },
+    members: new Set(["c_host"]),
+  };
+  const rankedLobby = { ...casualLobby, settings: { matchType: "quick", ranked: true } };
+
+  assertEq(doesLobbyMatchSearch(casualLobby, "yam-bowling", limits, { matchType: "quick", ranked: false }), true);
+  assertEq(doesLobbyMatchSearch(casualLobby, "yam-bowling", limits, { matchType: "quick", ranked: true }), false);
+  assertEq(doesLobbyMatchSearch(rankedLobby, "yam-bowling", limits, { matchType: "quick", ranked: false }), false);
+  assertEq(doesLobbyMatchSearch(rankedLobby, "yam-bowling", limits, { matchType: "quick", ranked: true }), true);
+
+  // Every other game omits the field entirely: both sides normalize to false and
+  // matchmaking behaves exactly as it did before the split existed.
+  const legacy = { ...casualLobby, gameId: "bird-duty", settings: { matchType: "duel" } };
+  assertEq(doesLobbyMatchSearch(legacy, "bird-duty", limits, { matchType: "duel" }), true);
+});
+
 test("buildLobbyStartedPayload includes authoritative Echo Duel snapshot metadata", () => {
   const echoMatch = createEchoDuelMatchState({
     roomCode: "ECHO7",
