@@ -222,6 +222,15 @@ test("an unknown track, distance or length is clamped rather than rejected", () 
   assertEqual(config.bestOf, DEFAULT_CONFIG.bestOf);
 });
 
+test("a circuit room preserves every shared location track", () => {
+  assertEqual(normalizeConfig({ raceTypeId: "circuit", trackId: "old-town-shrine-loop" }).trackId,
+    "old-town-shrine-loop");
+  assertEqual(normalizeConfig({ raceTypeId: "circuit", trackId: "docklands-freight-loop" }).trackId,
+    "docklands-freight-loop");
+  assertEqual(normalizeConfig({ raceTypeId: "circuit", trackId: "downtown-canal-ring" }).trackId,
+    "downtown-canal-ring");
+});
+
 test("a quick-search config is derived from the seed, not from either client", () => {
   const a = configFromSeed(12345);
   const b = configFromSeed(12345);

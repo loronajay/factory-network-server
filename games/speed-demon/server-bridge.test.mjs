@@ -521,5 +521,37 @@ test("a client in a room is owned by the bridge, and a stranger is not", () => {
   assert(!h.bridge.ownsClient("c_9"));
 });
 
+test("a circuit room rejects missing atlases, then broadcasts authoritative snapshots", () => {
+  const h = harness();
+  h.bridge.handleClientMessage("c_1", {
+    type: "create_room", gameId: "speed-demon", playerId: "p1", displayName: "Ana",
+    modelId: "kaido-gts",
+    config: { raceTypeId: "circuit", trackId: "old-town-shrine-loop", laps: 3, bestOf: 1 },
+  });
+  const code = h.last("room_joined").roomCode;
+  h.bridge.handleClientMessage("c_2", {
+    type: "join_room", gameId: "speed-demon", roomCode: code, playerId: "p2", displayName: "Bo",
+    modelId: "shutter-z",
+  });
+  h.bridge.handleClientMessage("c_2", roomMessage("ready", { ready: true }));
+  assertEqual(h.last("error").code, "CIRCUIT_ATLAS_UNAVAILABLE");
+  h.bridge.handleClientMessage("c_2", roomMessage("loadout", { modelId: "colt-gt", livery: null }));
+  h.bridge.handleClientMessage("c_1", roomMessage("ready", { ready: true }));
+  h.bridge.handleClientMessage("c_2", roomMessage("ready", { ready: true }));
+  const start = h.last("sd_round_start");
+  assertEqual(start.raceTypeId, "circuit");
+  assertEqual(start.config.bestOf, 1);
+  h.bridge.handleClientMessage("c_1", roomMessage("inputs", {
+    round: start.round, attempt: start.attempt,
+    events: [{ t: 0, throttle: 1, brake: 0, steer: 0, shift: 0 }],
+  }));
+  h.advance(2200);
+  h.bridge.tickActiveRooms();
+  const snapshots = h.events("sd_circuit_snapshot");
+  assertEqual(snapshots.length, 2, "both clients receive one server-owned state");
+  assert(snapshots[0].tick > 0);
+  assertEqual(h.events("sd_inputs").length, 0, "circuit peers do not author each other's state");
+});
+
 console.log(`\n  ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exitCode = 1;

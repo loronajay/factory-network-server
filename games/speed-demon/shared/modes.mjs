@@ -22,10 +22,12 @@ export const MODE_DISTANCE = "distance";
 export const MODE_TIME_ATTACK = "time-attack";
 export const MODE_RIVAL = "rival";
 export const MODE_ONLINE = "online";
+export const MODE_CIRCUIT = "circuit";
 
 /** What a mode measures. The race only ever sees one of these two. */
 export const OBJECTIVE_DISTANCE = "distance";
 export const OBJECTIVE_TIME = "time";
+export const OBJECTIVE_LAPS = "laps";
 
 /** The distances, in the order they read on the strip. Ids match RACE_DISTANCES. */
 const DISTANCE_OPTIONS = ["eighth", "quarter", "half", "mile"].map((id) => ({
@@ -44,9 +46,16 @@ const CLOCK_OPTIONS = [
   { id: "endurance", label: "2 MIN", seconds: 120 },
 ];
 
+const LAP_OPTIONS = [
+  { id: "one-lap", label: "1 LAP", laps: 1 },
+  { id: "three-laps", label: "3 LAPS", laps: 3 },
+  { id: "five-laps", label: "5 LAPS", laps: 5 },
+];
+
 export const MODES = [
   {
     id: MODE_DISTANCE,
+    runtime: "drag",
     label: "Distance Race",
     blurb: "One car, one strip, one time. Launch clean, and lift-shift-catch every gear over a fixed distance.",
     available: true,
@@ -59,6 +68,7 @@ export const MODES = [
   },
   {
     id: MODE_RIVAL,
+    runtime: "drag",
     label: "Rival Race",
     blurb: "Two cars, one strip, nobody watching. Pick somebody to beat — a driver from the roster, or your own best run.",
     available: true,
@@ -90,6 +100,7 @@ export const MODES = [
   },
   {
     id: MODE_TIME_ATTACK,
+    runtime: "drag",
     label: "Time Attack",
     blurb: "Endless road, fixed clock. Cover as much ground as you can before it runs out.",
     available: true,
@@ -101,7 +112,21 @@ export const MODES = [
     },
   },
   {
+    id: MODE_CIRCUIT,
+    runtime: "circuit",
+    label: "Circuit Race",
+    blurb: "Two-axis racing on circuits across the campaign map. Hit every checkpoint, complete the laps, and finish first.",
+    available: true,
+    objective: {
+      kind: OBJECTIVE_LAPS,
+      label: "LAPS",
+      options: LAP_OPTIONS,
+      defaultId: "three-laps",
+    },
+  },
+  {
     id: MODE_ONLINE,
+    runtime: "drag",
     label: "Online Versus",
     blurb: "Two cars side by side, best of three. Jump the light twice in a round and you forfeit it.",
     available: true,
@@ -169,6 +194,7 @@ export function raceOptionsFor(modeId, optionId) {
     throw new Error(`No such mode: ${modeId}`);
   }
   const option = objectiveOption(mode, optionId);
+  if (mode.objective.kind === OBJECTIVE_LAPS) return { laps: option.laps };
   return mode.objective.kind === OBJECTIVE_TIME
     ? { distanceMetres: null, timeLimitSeconds: option.seconds }
     : { distanceMetres: option.metres, timeLimitSeconds: null };

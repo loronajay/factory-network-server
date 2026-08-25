@@ -45,6 +45,12 @@ import {
   recordFalseStarts,
   recordFinish,
 } from "../shared/match.mjs";
+import {
+  circuitLoadoutAvailable,
+  createAuthoritativeCircuitRound,
+  ticksForElapsedMs,
+} from "./speed-demon-circuit-engine.mjs";
+import { CIRCUIT_TRACK_IDS, DEFAULT_CIRCUIT_TRACK_ID } from "../shared/circuit-tracks.mjs";
 
 export const PHASE_LOBBY = "lobby";
 export const PHASE_COUNTDOWN = "countdown";
@@ -52,14 +58,16 @@ export const PHASE_RUNNING = "running";
 export const PHASE_ROUND_OVER = "round-over";
 export const PHASE_MATCH_OVER = "match-over";
 
-/** The tracks a room may pick. Presentation only — the road geometry is shared. */
+/** The drag strips a room may pick; circuit geometry has its own catalog. */
 export const TRACK_IDS = ["track-a", "track-b", "track-c", "track-d", "track-e"];
 /** Casual opens every distance; ranked will restrict this to quarter and half. */
 export const DISTANCE_IDS = ["eighth", "quarter", "half", "mile"];
 
 export const DEFAULT_CONFIG = {
+  raceTypeId: "drag",
   trackId: "track-a",
   distanceId: "quarter",
+  laps: 3,
   bestOf: DEFAULT_BEST_OF,
 };
 
@@ -177,6 +185,14 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
     return true;
   }
 
+  function circuitStartIssue() {
+    if (state.config.raceTypeId !== "circuit") return null;
+    const unavailable = state.players.find((player) => !circuitLoadoutAvailable(player));
+    return unavailable
+      ? { code: "CIRCUIT_ATLAS_UNAVAILABLE", message: `${unavailable.displayName} needs a Circuit Race car` }
+      : null;
+  }
+
   function everyoneReady() {
     return state.players.length === 2 && state.players.every((player) => player.ready);
   }
@@ -191,6 +207,7 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
    */
   function startRound() {
     if (state.players.length !== 2) return null;
+    if (circuitStartIssue()) return null;
     if (!state.match) {
       state.match = createMatch({
         playerIds: state.players.map((player) => player.playerId),
@@ -207,6 +224,13 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
       startAt: serverNow + START_LEAD_MS,
       logs: new Map(state.players.map((player) => [player.playerId, createInputLog()])),
       results: new Map(),
+      circuit: state.config.raceTypeId === "circuit"
+        ? createAuthoritativeCircuitRound({
+          players: state.players,
+          laps: state.config.laps,
+          trackId: state.config.trackId,
+        })
+        : null,
     };
     for (const player of state.players) player.ready = false;
 
@@ -216,7 +240,9 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
       serverNow,
       startAt: state.round.startAt,
       countdownSeconds: COUNTDOWN_SECONDS,
-      distanceMetres: RACE_DISTANCES[state.config.distanceId].metres,
+      distanceMetres: state.config.raceTypeId === "drag" ? RACE_DISTANCES[state.config.distanceId].metres : null,
+      raceTypeId: state.config.raceTypeId,
+      participants: state.players.map(({ playerId, modelId, livery }) => ({ playerId, modelId, livery })),
       config: state.config,
       score: matchScore(state.match),
     };
@@ -250,6 +276,44 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
     return { player, accepted: timely, rejected: (events ?? []).length - timely.length };
   }
 
+  function recordCircuitInputs(clientId, { round, attempt, events }) {
+    const player = playerFor(clientId);
+    if (!player || !state.round?.circuit) return null;
+    if (round !== state.round.number || attempt !== state.round.attempt) return null;
+    if (state.phase !== PHASE_COUNTDOWN && state.phase !== PHASE_RUNNING) return null;
+    return { player, ...state.round.circuit.receive(player.playerId, events) };
+  }
+
+  function advanceCircuit() {
+    if (!state.round?.circuit || state.phase === PHASE_MATCH_OVER) return null;
+    const elapsedMs = now() - state.round.startAt;
+    if (elapsedMs < 0) return null;
+    markRunning();
+    const snapshot = state.round.circuit.advance(ticksForElapsedMs(elapsedMs));
+    return { snapshot, result: state.round.circuit.finished ? adjudicateCircuit() : null };
+  }
+
+  function adjudicateCircuit() {
+    if (!state.round?.circuit || !state.match || state.phase === PHASE_MATCH_OVER) return null;
+    const results = state.round.circuit.results;
+    state.match = recordFinish(state.match, results);
+    state.phase = PHASE_MATCH_OVER;
+    const winner = results.find((entry) => entry.playerId === state.match.winnerId);
+    return {
+      round: state.round.number,
+      attempt: state.round.attempt,
+      outcome: state.match.lastEvent,
+      redLight: false,
+      offenders: [],
+      runs: results.map((run) => ({ ...run, finishTime: run.finishTime })),
+      score: matchScore(state.match),
+      decided: true,
+      winnerId: state.match.winnerId ?? winner?.playerId ?? null,
+      loserId: state.match.loserId,
+      history: state.match.history,
+    };
+  }
+
   /**
    * A driver reporting their run is over. What they *claim* about it is ignored:
    * the flag only says "I have sent you everything", and the round is decided by
@@ -266,6 +330,7 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
   /** True once every driver has reported in, or the round has run out of time. */
   function roundIsOver() {
     if (!state.round || state.phase === PHASE_LOBBY) return false;
+    if (state.round.circuit) return state.round.circuit.finished;
     if (state.round.results.size === 2) return true;
     return now() - state.round.startAt > ROUND_TIMEOUT_MS;
   }
@@ -480,6 +545,9 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
     startRound,
     markRunning,
     recordInputs,
+    recordCircuitInputs,
+    advanceCircuit,
+    circuitStartIssue,
     recordDone,
     roundIsOver,
     adjudicate,
@@ -512,12 +580,17 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
  * put two cars on a real strip, not fail a room into existence.
  */
 export function normalizeConfig(config = {}) {
-  const trackId = TRACK_IDS.includes(config.trackId) ? config.trackId : DEFAULT_CONFIG.trackId;
+  const raceTypeId = config.raceTypeId === "circuit" ? "circuit" : "drag";
+  const trackId = raceTypeId === "circuit"
+    ? CIRCUIT_TRACK_IDS.includes(config.trackId) ? config.trackId : DEFAULT_CIRCUIT_TRACK_ID
+    : TRACK_IDS.includes(config.trackId) ? config.trackId : DEFAULT_CONFIG.trackId;
   const distanceId = DISTANCE_IDS.includes(config.distanceId)
     ? config.distanceId
     : DEFAULT_CONFIG.distanceId;
-  const bestOf = BEST_OF_OPTIONS.includes(config.bestOf) ? config.bestOf : DEFAULT_CONFIG.bestOf;
-  return { trackId, distanceId, bestOf };
+  const bestOf = raceTypeId === "circuit" ? 1
+    : BEST_OF_OPTIONS.includes(config.bestOf) ? config.bestOf : DEFAULT_CONFIG.bestOf;
+  const laps = [1, 3, 5].includes(config.laps) ? config.laps : DEFAULT_CONFIG.laps;
+  return { raceTypeId, trackId, distanceId, laps, bestOf };
 }
 
 /**

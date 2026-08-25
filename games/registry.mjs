@@ -29,6 +29,7 @@ import { definition as potOfGreed } from "./pot-of-greed/server/pot-of-greed.gam
 import { definition as questionableDecisions } from "./questionable-decisions/server/questionable-decisions.game.mjs";
 import { definition as speedDemon } from "./speed-demon/server/speed-demon.game.mjs";
 import { definition as yamBowling } from "./yam-bowling/server/yam-bowling.game.mjs";
+import { definition as miniHoops } from "./mini-hoops/server/mini-hoops.game.mjs";
 
 const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 
@@ -38,7 +39,7 @@ const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 let definitions = null;
 function allDefinitions() {
   if (!definitions) {
-    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling];
+    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops];
   }
   return definitions;
 }

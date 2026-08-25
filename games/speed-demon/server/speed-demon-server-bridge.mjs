@@ -198,6 +198,13 @@ export function createSpeedDemonServerBridge({
       }
 
       case "ready":
+        if (value?.ready !== false) {
+          const issue = room.engine.circuitStartIssue();
+          if (issue) {
+            emit(clientId, { event: "error", code: issue.code, message: issue.message });
+            return;
+          }
+        }
         room.engine.setReady(clientId, value?.ready !== false);
         emitLobby(room);
         if (room.engine.everyoneReady()) startRound(room);
@@ -206,12 +213,13 @@ export function createSpeedDemonServerBridge({
       // The live input stream. Relayed to the opponent so their client can draw
       // this car, and folded into the log the server will adjudicate on.
       case "inputs": {
-        const accepted = room.engine.recordInputs(clientId, {
+        const circuit = room.engine.config.raceTypeId === "circuit";
+        const accepted = (circuit ? room.engine.recordCircuitInputs : room.engine.recordInputs)(clientId, {
           round: Number(value?.round),
           attempt: Number(value?.attempt),
           events: Array.isArray(value?.events) ? value.events : [],
         });
-        if (!accepted || accepted.accepted.length === 0) return;
+        if (!accepted || accepted.accepted.length === 0 || circuit) return;
         for (const memberId of room.memberClientIds) {
           if (memberId === clientId) continue;
           emit(memberId, {
@@ -284,6 +292,22 @@ export function createSpeedDemonServerBridge({
       // A round is only live between the tree and both drivers reporting in, so
       // those are the two phases where a timeout means anything.
       const live = room.engine.phase === "running" || room.engine.phase === "countdown";
+      if (live && room.engine.config.raceTypeId === "circuit") {
+        const advanced = room.engine.advanceCircuit();
+        if (!advanced) continue;
+        emitToRoom(room, {
+          event: "sd_circuit_snapshot",
+          roomCode: room.roomCode,
+          round: room.engine.describe().round?.number ?? 0,
+          attempt: room.engine.describe().round?.attempt ?? 1,
+          serverNow: now(),
+          ...advanced.snapshot,
+        });
+        if (advanced.result) {
+          emitToRoom(room, { event: "sd_round_result", roomCode: room.roomCode, ...advanced.result });
+        }
+        continue;
+      }
       if (live && room.engine.roundIsOver()) finishRound(room);
     }
   }
