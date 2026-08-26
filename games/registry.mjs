@@ -30,6 +30,7 @@ import { definition as questionableDecisions } from "./questionable-decisions/se
 import { definition as speedDemon } from "./speed-demon/server/speed-demon.game.mjs";
 import { definition as yamBowling } from "./yam-bowling/server/yam-bowling.game.mjs";
 import { definition as miniHoops } from "./mini-hoops/server/mini-hoops.game.mjs";
+import { definition as miniHoopsHorse } from "./mini-hoops/server/mini-hoops-horse.game.mjs";
 
 const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 
@@ -39,7 +40,7 @@ const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 let definitions = null;
 function allDefinitions() {
   if (!definitions) {
-    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops];
+    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse];
   }
   return definitions;
 }

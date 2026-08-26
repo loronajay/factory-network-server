@@ -142,9 +142,32 @@ export function worldToScreenLength(length, z) {
  * drawn one.
  */
 export function ringEllipseAt(centreScreenX, centreScreenY, worldRadius, z = RIM_CENTER_Z) {
+  return tiltedRingEllipseAt(centreScreenX, centreScreenY, worldRadius, z, 0);
+}
+
+/**
+ * `ringEllipseAt` for a ring whose plane LEANS AWAY from the camera by `tilt`
+ * radians, hinged on the horizontal (screen-x) axis through its centre.
+ *
+ * How open a ring looks is a function of the angle between its plane and the
+ * eye — and a horizontal ring is only one of the planes that can produce a given
+ * ellipse. Leaning the plane back closes the ellipse without touching its width,
+ * which is what lets a collider be fitted to a painted opening the camera would
+ * otherwise draw rounder than the picture does. `sim/bin-physics.js` solves for
+ * the lean; this function is the projection it solves against.
+ *
+ * The ring's points are `C + r(cos(phi), 0, 0) + r sin(phi) * (0, -sin, cos)`,
+ * so the FAR side of the ring is also the LOW side, and the two shifts partly
+ * cancel on screen. That cancellation is the whole mechanism: the ring's
+ * horizontal footprint barely changes (it shrinks by `cos(tilt)` front-to-back)
+ * while its drawn height falls away fast.
+ */
+export function tiltedRingEllipseAt(centreScreenX, centreScreenY, worldRadius, z = RIM_CENTER_Z, tilt = 0) {
   const centre = screenToWorldAtZ(centreScreenX, centreScreenY, z);
-  const near = projectPoint({ x: centre.x, y: centre.y, z: z - worldRadius });
-  const far = projectPoint({ x: centre.x, y: centre.y, z: z + worldRadius });
+  const rise = worldRadius * Math.sin(tilt);
+  const reach = worldRadius * Math.cos(tilt);
+  const near = projectPoint({ x: centre.x, y: centre.y + rise, z: z - reach });
+  const far = projectPoint({ x: centre.x, y: centre.y - rise, z: z + reach });
   return {
     cx: centreScreenX,
     cy: (near.y + far.y) / 2,

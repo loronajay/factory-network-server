@@ -78,7 +78,13 @@ descriptor. `speed-demon` is the **server-authoritative** one: its bridge owns t
 the room codes, the christmas tree and the match, and it decides every round by
 *replaying both drivers' input logs* through a mirrored copy of the cabinet's
 pure physics under `games/speed-demon/shared/`. Clients send inputs and never a
-finishing time — see that folder's notes. `mini-tactics` is a **config-only lobby game** (2-4 players, FFA +
+finishing time — see that folder's notes. `mini-hoops` is a **server-authoritative lobby game** and its folder now holds **two**
+definitions off one mirrored sim: `mini-hoops` (the timed score duel — the server owns the
+deadline and replays every pull) and `mini-hoops-horse` (HORSE — no clock at all; a match
+ends when a player spells the word). HORSE adds one shape the others do not have: a
+**placement is authoritative mid-match state**, submitted by the setter, re-clamped through
+the cabinet's own legal-volume function, and replicated so the opponent draws the same bin.
+Both refuse any client-authored outcome with `SERVER_AUTHORITY`. `mini-tactics` is a **config-only lobby game** (2-4 players, FFA +
 2v2 teams): its `lobbyGame` carries `lobbyLimits` only — no match engine — because
 the match runs as deterministic client lockstep over the generic lobby relay
 (shared `seed` + ordered `members` from `lobby_started`; board size/format/squads
@@ -185,7 +191,8 @@ All of the following live in `src/state.mjs` and are imported wherever needed.
 
 ## Tests
 
-`npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `src/no-game-literals.test.mjs` (the game-agnostic guardrail), `games/registry.test.mjs` (strategy/settings/lobby resolution), `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`, the three `games/circuit-siege/*.test.mjs` suites, and the three `games/speed-demon/*.test.mjs` suites (replay/mirror guard, match engine, server bridge).
+`npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `src/no-game-literals.test.mjs` (the game-agnostic guardrail), `games/registry.test.mjs` (strategy/settings/lobby resolution), `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`,
+`games/mini-hoops/mini-hoops.test.mjs` + `games/mini-hoops/mini-hoops-horse.test.mjs`, the three `games/circuit-siege/*.test.mjs` suites, and the three `games/speed-demon/*.test.mjs` suites (replay/mirror guard, match engine, server bridge).
 
 **`games/speed-demon/replay.test.mjs` is a mirror guard, not a unit test.** Its
 `shared/` folder is a *copy* of the cabinet's pure sim, and the failure mode of
