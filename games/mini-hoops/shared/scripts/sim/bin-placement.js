@@ -119,23 +119,44 @@ export const EYE_LEVEL_Y = (() => {
  * picture, and the two would silently stop describing the same object.
  *
  * It falls with depth, because a bin further away is seen from a shallower angle
- * — about 0.88 at the front of the room and 0.76 at the back. Bisected against
+ * — about 0.97 at the front of the room and 0.87 at the back. Bisected against
  * the real projection rather than derived, for the same reason the tilt is: the
  * projection is not linear in height.
+ *
+ * `MOUTH_ASPECT_TOLERANCE` is the one deliberate slackening of that rule, and it
+ * is why those numbers are not the 0.88/0.76 they used to be. Held at exactly
+ * 1.0 the cap is the last height at which the collider lands on the painted
+ * mouth EXACTLY, and it left a usable band of about 0.5 world units to place in,
+ * which reads as a height slider that barely does anything. Below 1.0 the cap is
+ * the last height at which the honest projection is still this share as round as
+ * the paint — past the exact solution, `solveBinMouthTilt` returns a flat mouth
+ * and the collider projects slightly FLATTER than the sprite draws.
+ *
+ * That direction is the safe one, and it is the reason a tolerance is acceptable
+ * here at all: a collider narrower front-to-back than its own picture makes the
+ * very top of the range a touch meaner than it looks, where the opposite would
+ * let a ball drop through paint. It is bounded — at the cap the opening's
+ * footprint is `MOUTH_ASPECT_TOLERANCE` of the painted one, and everywhere below
+ * it the agreement is still exact. It is NOT a licence to keep climbing: raise
+ * it toward eye level and the sprite is painting an open mouth on a bin whose
+ * opening faces away from the camera, which no tolerance makes true.
  */
+const MOUTH_ASPECT_TOLERANCE = 0.75;
+
 export function maxMouthHeightAt(z) {
+  const floor = BIN_PAINTED_MOUTH_ASPECT * MOUTH_ASPECT_TOLERANCE;
   const aspectAt = (y) => {
     const centre = projectPoint({ x: 0, y, z });
     const ring = ringEllipseAt(centre.x, centre.y, MOUTH_OUTER, z);
     return ring.radiusX > 0 ? ring.radiusY / ring.radiusX : 0;
   };
-  if (aspectAt(BIN_BODY_HEIGHT) <= BIN_PAINTED_MOUTH_ASPECT) return BIN_BODY_HEIGHT;
+  if (aspectAt(BIN_BODY_HEIGHT) <= floor) return BIN_BODY_HEIGHT;
 
   let lo = BIN_BODY_HEIGHT;
   let hi = EYE_LEVEL_Y;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    if (aspectAt(mid) > BIN_PAINTED_MOUTH_ASPECT) lo = mid; else hi = mid;
+    if (aspectAt(mid) > floor) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
 }

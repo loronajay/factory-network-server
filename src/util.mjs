@@ -41,6 +41,7 @@ export function lobbyPlayerCount(lobby) {
 
 export function sanitizeLobbySettings(settings = {}) {
   const matchType = typeof settings.matchType === "string" ? settings.matchType.trim().slice(0, 32) : "";
+  const miniHoopsDuration = Number(settings.duration);
   return {
     penaltyWord: sanitizePenaltyWord(settings.penaltyWord || "ECHO"),
     packId: typeof settings.packId === "string" && settings.packId.trim() ? settings.packId.trim().slice(0, 32) : "pack_01",
@@ -53,6 +54,14 @@ export function sanitizeLobbySettings(settings = {}) {
     // never sends it stays false on both sides and is unaffected.
     ranked: settings.ranked === true,
     protocolVersion: Number.isFinite(Number(settings.protocolVersion)) ? Math.max(1, Math.floor(Number(settings.protocolVersion))) : 1,
+    // Mini Hoops' four competitive settings must survive the generic lobby
+    // boundary. Its game engine performs the catalog validation when a match is
+    // created; this layer only keeps bounded primitives so matchmaking can
+    // compare them and the engine can receive the host's actual selection.
+    modeId: typeof settings.modeId === "string" ? settings.modeId.trim().slice(0, 32) : "still",
+    duration: Number.isFinite(miniHoopsDuration) ? Math.floor(miniHoopsDuration) : 30,
+    locationId: typeof settings.locationId === "string" ? settings.locationId.trim().slice(0, 32) : "bedroom",
+    ballId: typeof settings.ballId === "string" ? settings.ballId.trim().slice(0, 32) : "basketball",
   };
 }
 

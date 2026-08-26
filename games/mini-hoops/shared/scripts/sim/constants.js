@@ -132,8 +132,19 @@ export const PULL_MAX = 105;
 // stretch is drawn as an elastic segment so the pull reads as tension rather
 // than as the ball lagging behind the finger.
 export const PULL_VISUAL_GAIN = 0.68;
-// How far sideways the aim marker swings for a fully angled pull.
-export const PULL_AIM_GAIN = 156;
+// How far sideways the aim marker swings for a fully angled pull. This, times
+// PULL_ANGLE_RATIO_LIMIT, IS the reticle's reach either side of centre — see
+// AIM_MIN_X below, which is derived from it rather than typed beside it.
+//
+// It is set so that reach is 188px, which is not a taste number: the rim's own
+// travel is `HOOP_TRAVEL_BOUNDS` x 292..588, and 480-292 is 188. THE RETICLE HAS
+// TO REACH EVERY POSITION THE RIM CAN OCCUPY. At the old 156 it reached only
+// 355..605, so the leftmost stretch of every horizontal mode's sweep could not
+// be aimed at directly at all — you could only ever lead the rim back toward the
+// middle, never meet it out at the end of its travel. Not derived from
+// HOOP_TRAVEL_BOUNDS in code because hoop.js reads this file and not the other
+// way round; `tests/pull.test.js` asserts the relationship instead.
+export const PULL_AIM_GAIN = 235;
 // Lateral travel is allowed but clamped against backward travel, so the gesture
 // always still reads as a pull *back* toward the player.
 export const PULL_SIDE_LIMIT = 0.9;
@@ -144,9 +155,16 @@ export const PULL_MIN_SIDE = 9;
 // stops a barely-started pull from swinging the aim to full lock.
 export const PULL_ANGLE_MIN_BACK = 42;
 export const PULL_ANGLE_RATIO_LIMIT = 0.8;
-// The aim marker cannot leave this horizontal band.
-export const AIM_MIN_X = 320;
-export const AIM_MAX_X = 640;
+// The aim marker cannot leave this horizontal band, and the band is DERIVED
+// from the gesture that swings it rather than stated alongside. They used to be
+// two independent numbers and they disagreed: the clamp declared 320..640 while
+// a fully angled pull only ever reached 355..605, so a quarter of the declared
+// band was unreachable — and HORSE reads this band as the statement of what a
+// player can aim at, so it was licensing bin placements no pull could convert.
+// One statement now, and widening the gesture widens both together.
+export const AIM_REACH_X = PULL_AIM_GAIN * PULL_ANGLE_RATIO_LIMIT;
+export const AIM_MIN_X = HOOP_BASE_X - AIM_REACH_X;
+export const AIM_MAX_X = HOOP_BASE_X + AIM_REACH_X;
 // Aim sits marginally below the rim line so a dead-centre shot descends into the
 // ring rather than grazing its front edge.
 export const AIM_RIM_Y_OFFSET = 2;

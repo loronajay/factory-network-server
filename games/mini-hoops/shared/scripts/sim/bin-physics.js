@@ -220,6 +220,64 @@ const ROW_Z = Object.freeze([0.87, 0.60, 0.33]);
 const COLUMN_X = Object.freeze([-0.5, 0, 0.5]);
 const SEPARATION = 0.0015;
 
+// The board's own layout, published so the floor grid is DRAWN FROM IT rather
+// than from a second set of numbers typed beside it.
+//
+// It used to be exactly that second set, and it was wrong in both directions at
+// once. Its rows ran the other way — the panel for cell 0 was painted at the
+// FRONT of the room while bin 0 stands at the back — so every claimed cell lit
+// up mirrored north/south, three rows away from the mark it belonged to. And its
+// cells were centred on `ROW_Z`, which sounds right and does not look it; see
+// `BIN_APPARENT_FOOT_OFFSET`.
+export const BIN_GRID_ROW_Z = ROW_Z;
+export const BIN_GRID_COLUMN_X = COLUMN_X;
+export const BIN_GRID_ROW_DEPTH = ROW_Z[1] - ROW_Z[2];
+export const BIN_GRID_COLUMN_WIDTH = COLUMN_X[1] - COLUMN_X[0];
+
+/**
+ * How far NEARER the camera a drum looks than the point it stands on.
+ *
+ * A drum standing at `z` covers floor from `z - bottomRadius` to
+ * `z + bottomRadius`, so centring its cell on `z` is geometrically exact — and
+ * it reads as the bin spilling forward out of its own cell, because the far half
+ * of that footprint is HIDDEN BEHIND THE DRUM. All the eye is given is the near
+ * base edge, and the near base edge lands precisely on the cell's front line.
+ *
+ * So the cell is centred on the footprint the player can actually see, which
+ * runs from the near base edge to the axis: a half-radius nearer than the bin.
+ * Nothing about the collider moves — the rows are still 0.27 apart at 0.33 /
+ * 0.60 / 0.87, the make rate is untouched, and the difficulty levers are still
+ * the row spacing and `BIN_MOUTH_OUTER_RADIUS`. This is the PAINT catching up
+ * with where the bins visibly stand, which is the only honest direction: at
+ * z=0.87 the back row is already close enough to the wall at BOARD_Z that it
+ * cannot be pushed back.
+ */
+export const BIN_APPARENT_FOOT_OFFSET = BIN_BOTTOM_RADIUS / 2;
+
+/**
+ * The floor panel under one cell, indexed EXACTLY as `bin.index` is: row 0 is
+ * the back row, because `createBinTargets` builds row 0 from `ROW_Z[0]`.
+ */
+export function binGridCell(row, column) {
+  const centreZ = ROW_Z[row] - BIN_APPARENT_FOOT_OFFSET;
+  const halfDepth = BIN_GRID_ROW_DEPTH / 2;
+  const halfWidth = BIN_GRID_COLUMN_WIDTH / 2;
+  return {
+    index: row * 3 + column,
+    row,
+    column,
+    minX: COLUMN_X[column] - halfWidth,
+    maxX: COLUMN_X[column] + halfWidth,
+    minZ: centreZ - halfDepth,
+    maxZ: centreZ + halfDepth,
+  };
+}
+
+/** Every cell, in `bin.index` order. */
+export function binGridCells() {
+  return ROW_Z.flatMap((_, row) => COLUMN_X.map((__, column) => binGridCell(row, column)));
+}
+
 /**
  * How far from a bin's axis the ball has to be before that bin cannot possibly
  * be touching it. A cheap reject in front of the two real resolvers.
