@@ -21,6 +21,7 @@
 
 import {
   BALL_RADIUS_WORLD,
+  BIN_ENTRY_SPEED,
   GRAVITY,
   LAUNCH_MIN_DEPTH_SPEED,
   LAUNCH_MIN_RISE,
@@ -43,6 +44,35 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
  */
 export function entryVelocityForLoft(loft) {
   return MIN_EXIT_VY + (MAX_EXIT_VY - MIN_EXIT_VY) * clamp(loft, 0, 1);
+}
+
+/**
+ * The bin modes' arrival speed, scaled to the ball's own weight.
+ *
+ * A bin is a hole in the ground, so both bin modes ask for a steep arrival
+ * rather than the classic rim's loft-chosen one — and that arrival used to be
+ * the flat constant `BIN_ENTRY_SPEED` for every ball in the roster. It cannot
+ * be. Flight time for a fixed arrival speed goes as `1/g`, so a ball's WEIGHT
+ * was re-shaping the whole arc rather than only its tempo: the bowling ball came
+ * out flat and fast enough to clip the near lip of the front row on the way out
+ * of the hand, and the beach ball ballooned to a 2.6-second lob that hit the
+ * ceiling and dropped two rows short of where it was aimed.
+ *
+ * Scaling the arrival by `sqrt(weight)` is what makes the arc ONE SHAPE across
+ * the roster. Under `g = G*w` and `e = E*sqrt(w)` the flight time works out as
+ * `(E + sqrt(E^2 + 2*G*h)) / (G*sqrt(w))` — every velocity component scales by
+ * `sqrt(w)` and the path through the room is identical, walked faster by a heavy
+ * ball and slower by a light one. That is the same promise `solveLaunch` already
+ * makes about weight: it is compensated, and DRAG is the knob the player has to
+ * find. With this in, the remaining per-ball miss in the bin modes is drag
+ * undershoot and nothing else.
+ *
+ * Deliberately NOT applied to the classic hoop, whose entry velocity is the
+ * player's own loft choice and whose feel is a calibration record.
+ */
+export function binEntryVelocity(weight = 1) {
+  const safe = Number.isFinite(weight) && weight > 0 ? weight : 1;
+  return -BIN_ENTRY_SPEED * Math.sqrt(safe);
 }
 
 /**
@@ -128,6 +158,14 @@ export function launchSpin(launch) {
   return (launch.vz / BALL_RADIUS_WORLD) * (LAUNCH_SPIN_BASE + LAUNCH_SPIN_PER_LOFT * launch.loft);
 }
 
+// A hard stop on how far forward the preview is drawn, for the pathological
+// case: `planeTime` divides by the depth speed, so a shot thrown almost
+// straight up would otherwise sample for minutes. It is NOT meant to trim a
+// real arc, and at 1.45 it was doing exactly that — the bin modes' lightest
+// ball takes 1.6s to reach the back of the room, so its preview stopped dead in
+// mid-air short of the reticle.
+const TRAJECTORY_MAX_SECONDS = 2;
+
 /**
  * Sample the un-obstructed flight path, for the aiming preview.
  *
@@ -135,7 +173,7 @@ export function launchSpin(launch) {
  * where it ends up. Showing the true post-bounce path would hand the player the
  * answer the shot is supposed to be asking.
  */
-export function trajectoryPoints(origin, launch, { step = 0.06, maxSeconds = 1.45 } = {}) {
+export function trajectoryPoints(origin, launch, { step = 0.06, maxSeconds = TRAJECTORY_MAX_SECONDS } = {}) {
   const limit = Math.min(maxSeconds, Math.max(step, launch.planeTime * 1.04));
   // A launch solved before `gravity` existed on it still previews correctly.
   const gravity = Number.isFinite(launch.gravity) ? launch.gravity : GRAVITY;

@@ -29,9 +29,9 @@
 // expressed as a MULTIPLIER on that reference, so the basketball's block is all
 // ones and reads as documentation of what "normal" means.
 //
-// The snowball also SPLATS. See SPLAT_SURFACES below: it bursts on bare wall and
-// floor, the two surfaces a shot is already dead on, so bursting never turns a
-// miss into a make or a make into a miss. That is still worth keeping — not to
+// The snowball and the meatball also SPLAT. See SPLAT_SURFACES below: they burst
+// on bare wall and floor, the two surfaces a shot is already dead on, so
+// bursting never turns a miss into a make or a make into a miss. That is still worth keeping — not to
 // protect board parity any more, but because a ball that vanished off the rim
 // would lose rattle-ins and bank-ins, which are outcomes the player earned.
 
@@ -85,9 +85,9 @@ export const REFERENCE_FLIGHT = Object.freeze({ weight: 1, drag: 0, bounce: 1, g
  * here rather than teaching the view about numbers.
  */
 const FLIGHT_DISPLAY_RANGE = Object.freeze({
-  weight: Object.freeze({ min: 0.7, max: 1.5 }),
+  weight: Object.freeze({ min: 0.6, max: 1.5 }),
   drag: Object.freeze({ min: 0, max: 0.4 }),
-  bounce: Object.freeze({ min: 0.3, max: 1.1 }),
+  bounce: Object.freeze({ min: 0.2, max: 1.1 }),
   grip: Object.freeze({ min: 0.9, max: 2 }),
 });
 
@@ -157,6 +157,103 @@ export const BALLS = Object.freeze([
       scale: 2.7,
     }),
   }),
+  Object.freeze({
+    id: "meatball",
+    label: "Meatball",
+    blurb: "Made with love, deliciously juicy.",
+    frameCount: 4,
+    // Heavier and draggier than the snowball, which is the second bursting ball
+    // it is most easily mistaken for: it dives on the shortest arc of anything
+    // that splats, and it lands enough short of the reticle to be worth
+    // re-learning the meter for. What it keeps is grip — a wet ball dies in the
+    // ring rather than kicking out, which is where its makes come from.
+    flight: Object.freeze({ weight: 1.33, drag: 0.11, bounce: 0.8, grip: 1.35 }),
+    // A ball that does not survive its own landing. Presence of this block is
+    // what makes it splat; the fields are only how the splat LOOKS. Which
+    // surfaces end it is SPLAT_SURFACES above, and is not negotiable per ball.
+    splat: Object.freeze({
+      // Sauce, not powder — and DELIBERATELY NOT THE SNOWBALL'S. The tint is
+      // read off the decal art's own mean (183, 52, 27) and lifted a little,
+      // the same way the snowball's spray is lighter than its decal, so the
+      // grains in the air read against a dark room. Two bursting balls that
+      // threw the same white would be one effect wearing two hats.
+      color: "#cf3a22",
+      // How wide the decal sits, in ball diameters — before the projection
+      // shrinks it for depth, which it does the same way it shrinks the ball.
+      scale: 2.7,
+    }),
+  }),
+  Object.freeze({
+    id: "rubber-band-ball",
+    label: "Rubber Band Ball",
+    blurb: "Someone had a lot of time on their hands.",
+    frameCount: 4,
+    // The LIVE end of the roster, and the only ball whose bounce is authored
+    // past the display range on purpose. Restitution is capped at 1 in
+    // `sim/collision.js`, so 2.15 does not mean "comes back faster than it
+    // arrived" — it means every surface in the room is pinned at or near its
+    // own ceiling, and the bar simply pegs. A rattle that would kick any other
+    // ball out flings this one around the ring until the grip finally kills it,
+    // so its makes come from second and third chances rather than from the
+    // first pass. Slightly heavy and very clean through the air, so the ARC is
+    // honest and close to the reference; it is only the CONTACT that is chaos.
+    flight: Object.freeze({ weight: 1.11, drag: 0.01, bounce: 2.15, grip: 1.9 }),
+  }),
+  Object.freeze({
+    id: "magma-ball",
+    label: "Magma Ball",
+    blurb: "Still cooling. Best not to hold it for long.",
+    frameCount: 4,
+    // Light and clean: it climbs on the floatiest arc in the roster and the air
+    // barely touches it, so the reticle stays close to honest. What it pays is
+    // everything on contact — the deadest ball in the cabinet, deader than the
+    // bowling ball, because molten rock does not bounce. It drops where it hits
+    // and stays there. The grip is what keeps it playable: a rattle sticks in
+    // the ring and drips through instead of kicking out, which is where its
+    // makes come from now that the rim has stopped handing it second chances.
+    flight: Object.freeze({ weight: 0.82, drag: 0.03, bounce: 0.2, grip: 1.7 }),
+    // The only ball that BURNS. Presence of this block is what gives a ball a
+    // flame trail in flight and a fire where it lands; the fields are only how
+    // those look. Cosmetic by construction in the same way `splat` is — see
+    // `effects/flame-trail.js`, which is a fourth-layer effect and can no more
+    // reach the score than a splat decal can. What makes this ball harder is
+    // its `flight` block above, which is published on the setup picker; the
+    // fire is not, and must never become an advantage.
+    trail: Object.freeze({
+      // Hottest at the centre of a grain, cooling outward, and grey by the time
+      // it has fallen behind. Three stops rather than one tint, because a trail
+      // painted in a single colour reads as a ribbon rather than as fire.
+      core: "#fff0bd",
+      flame: "#ff6a12",
+      smoke: "#6b4534",
+      // Grains per second at full speed, and how long one lives. The rate is
+      // scaled by how fast the ball is actually moving — a ball sitting on the
+      // floor smoulders, one crossing the room streams.
+      rate: 120,
+      life: 0.52,
+      // Grain radius in world units, before the projection shrinks it for depth
+      // exactly the way it shrinks the ball and the splat decals.
+      size: 0.05,
+      // What it leaves burning where it lands. `radius` is the patch on the
+      // surface; `rate` is how hard that patch goes on throwing grains.
+      fire: Object.freeze({ life: 2.4, rate: 30, radius: 0.26 }),
+    }),
+  }),
+  Object.freeze({
+    id: "beach-ball",
+    label: "Beach Ball",
+    blurb: "Mostly air. It has opinions about where it is going.",
+    frameCount: 3,
+    // The magma ball's opposite trade, and the roster's other extreme. It is
+    // the LIGHTEST thing here and the draggiest, so it floats up forever and
+    // then dies in the air — the reference pull lands it well short of the
+    // reticle and finding its own number is the whole of learning it. What it
+    // gives back is a lively bounce; what it takes is the only grip in the
+    // cabinet BELOW the basketball's, because a slick vinyl skin does not hold
+    // a steel ring. A rattle kicks out. The magma ball is dead on contact and
+    // sticks; this one is alive on contact and slides.
+    flight: Object.freeze({ weight: 0.35, drag: 0.15, bounce: 1.05, grip: 0.95 }),
+  }),
 ]);
 
 export const DEFAULT_BALL = "basketball";
@@ -177,6 +274,19 @@ export function ballFramePaths(id) {
     { length: ball.frameCount },
     (_, index) => `${BALL_ASSET_ROOT}/${ball.id}/roll-${String(index).padStart(2, "0")}.png`,
   );
+}
+
+/**
+ * One frame of a ball, for showing the thing itself in a picker.
+ *
+ * Every picker in the cabinet used to name a ball and draw nothing, which asks a
+ * player to recognise "Rubber Band Ball" as a colour they have never seen. There
+ * is no separate portrait art and there should not be: the roll frames ARE the
+ * ball, photographed square on a transparent background at `BALL_FRAME_SIZE`, so
+ * a portrait is frame zero and adding a ball still costs exactly one folder.
+ */
+export function ballPortraitPath(id) {
+  return ballFramePaths(id)[0];
 }
 
 /**
@@ -202,6 +312,18 @@ export function ballFrameIndex(id, rollPhase) {
  */
 export function ballSplat(id) {
   return ballById(id).splat || null;
+}
+
+/**
+ * The flame cosmetics for a ball, or null if it does not burn.
+ *
+ * Same convention as `ballSplat`: null rather than an empty object, because
+ * "this ball is on fire" and "this ball is on fire in no particular way" are
+ * not the same statement, and every composition root tests it for truthiness to
+ * know whether to run a trail at all.
+ */
+export function ballTrail(id) {
+  return ballById(id).trail || null;
 }
 
 /** Whether this ball is destroyed by a contact with `surface`. */

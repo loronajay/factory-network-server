@@ -181,6 +181,13 @@ export const LOFT_RATIO_SPAN = 0.28;
 // linearly against it, which is what makes the displayed power percentage honest.
 export const REFERENCE_POWER = 0.8;
 
+// How fast the ball should be dropping as it arrives at a bin's mouth, for the
+// reference basketball. The bin modes shoot into a hole in the ground rather
+// than through a ring, so they ask for a steep arrival instead of the classic
+// rim's loft-chosen one. `sim/launch.js`'s `binEntryVelocity` scales it to the
+// ball in hand — see the note there for why a flat value re-shaped the arc.
+export const BIN_ENTRY_SPEED = 4;
+
 // A target at or below the launch point has no ballistic solution. This floor
 // keeps the solver defined for a shot aimed absurdly low.
 export const LAUNCH_MIN_RISE = 0.08;

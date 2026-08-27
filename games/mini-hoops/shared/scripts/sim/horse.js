@@ -250,3 +250,24 @@ export function chooseCpuBinSetup(difficulty = "medium", random = Math.random, m
     motionId: motions[Math.floor(random() * motions.length)],
   };
 }
+
+/**
+ * The ball the CPU sets a shot with.
+ *
+ * The ball is part of the standing shot, so this is a real decision and not a
+ * skin: whatever the CPU picks is the ball its opponent then owes the shot in.
+ * Unlocked by boldness exactly the way the motions are, and for the same
+ * reason — the timid end stays on the reference ball, which is the one a new
+ * player has already learned the meter for, and a braver CPU reaches further
+ * down the list to hand over something that flies differently.
+ *
+ * The ids come from the caller, so this module still owns no catalog. It relies
+ * on that list being the catalog's own order, whose first entry is the
+ * reference ball.
+ */
+export function chooseCpuTurnBall(difficulty = "medium", random = Math.random, ballIds = []) {
+  if (!ballIds.length) return null;
+  const { boldness } = horseDifficultyById(difficulty);
+  const reach = boldness < 0.34 ? 1 : Math.max(1, Math.round(ballIds.length * boldness));
+  return ballIds[Math.floor(random() * Math.min(reach, ballIds.length))];
+}

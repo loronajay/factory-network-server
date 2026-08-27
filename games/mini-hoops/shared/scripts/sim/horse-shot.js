@@ -22,13 +22,8 @@
 
 import { REFERENCE_POWER } from "./constants.js";
 import { PLACEMENT_BOUNDS, normalizeBinSetup } from "./bin-placement.js";
-import { solveLaunch } from "./launch.js";
+import { binEntryVelocity, solveLaunch } from "./launch.js";
 import { projectPoint } from "./projection.js";
-
-// The steep arrival the bin modes shoot with — a ball dropping INTO a hole in
-// the ground rather than arcing through a ring. Shared with tic-tac-toe's value
-// on purpose: it is a property of the target being a bin.
-const BIN_ENTRY_VELOCITY = -4;
 
 // A little slack past the legal placement volume at both ends, so a bin sitting
 // exactly on the front or back limit is not aimable only at 0% or 100% — the
@@ -82,7 +77,7 @@ export function createHorseShot(pull, origin, setup, { weight = 1 } = {}) {
     // limp pull that would also be an unreadable meter.
     power: REFERENCE_POWER,
     loft: pull.loft,
-    entryVelocity: BIN_ENTRY_VELOCITY,
+    entryVelocity: binEntryVelocity(weight),
     weight,
   });
   launch.inputPower = clamp(pull.power, 0, 1);

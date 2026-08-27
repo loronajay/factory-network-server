@@ -144,6 +144,23 @@ export function madeAnnouncement(streak) {
   return streak >= ON_FIRE_STREAK ? "ON FIRE!" : "BUCKET!";
 }
 
+/**
+ * How many steps of heat a streak is worth, past the point it catches.
+ *
+ * The HUD burns while a player is on fire, and it burns HARDER the longer the
+ * run goes — so the readout needs a small integer rather than a boolean. It
+ * lives here beside `madeAnnouncement` because "am I on fire" is one question
+ * asked in two places, and answering it twice is how the shout and the flames
+ * end up disagreeing about the same streak.
+ */
+export const FIRE_LEVELS = 3;
+
+/** 0 when the streak is cold, then 1..FIRE_LEVELS as it climbs. */
+export function onFireLevel(streak) {
+  if (!(streak >= ON_FIRE_STREAK)) return 0;
+  return Math.min(FIRE_LEVELS, streak - ON_FIRE_STREAK + 1);
+}
+
 /** Mark the outcome certain. Returns false if it already was. */
 function resolve(shot, label) {
   if (shot.resolvedAt >= 0) return false;
