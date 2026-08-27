@@ -19,13 +19,13 @@
 export const DEFAULT_WORD = "HORSE";
 
 /**
- * The room and the ball, fixed the way Floor Tic-Tac-Toe fixes them.
+ * The fixed room and the default turn ball, shared with online adjudication.
  *
  * Stated here rather than in the root that draws it, because online HORSE is
  * adjudicated by a mirrored copy of this sim on `factory-network-server` — and a
- * ball named in one root and re-typed in a server module is exactly the kind of
- * pair that drifts silently. There is nothing to choose anyway: what the two
- * players are negotiating over is the BIN.
+ * default named in one root and re-typed in a server module is exactly the kind
+ * of pair that drifts silently. Players may replace it from the on-court picker
+ * before each shot; this is the safe fallback for old or malformed intents.
  */
 export const HORSE_FIXED_SETUP = Object.freeze({
   locationId: "warehouse",

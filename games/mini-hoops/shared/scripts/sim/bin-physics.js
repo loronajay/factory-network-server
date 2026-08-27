@@ -17,7 +17,7 @@
 // instead of rolling out, and that alone is most of what read as the physics
 // being wrong.
 
-import { ballFlight, rollPhasePerRadian } from "../assets/ball-catalog.js";
+import { ballFlight, ballSplatsOn, rollPhasePerRadian } from "../assets/ball-catalog.js";
 import {
   BALL_RADIUS_WORLD,
   BOARD_Z,
@@ -574,6 +574,7 @@ export function resolveBinWallContact(ball, previous, bin, flight = { bounce: 1 
 }
 
 export function stepBallAgainstBins(ball, bins, tickSeconds, { ballId = "basketball", capturedBin = null } = {}) {
+  if (ball.splat) return { contacts: [], scoredBin: null, capturedBin, splat: null };
   const substeps = Math.max(1, Math.ceil(tickSeconds / PHYSICS_SUBSTEP_SECONDS));
   const dt = tickSeconds / substeps;
   const flight = ballFlight(ballId);
@@ -583,8 +584,10 @@ export function stepBallAgainstBins(ball, bins, tickSeconds, { ballId = "basketb
   const contacts = [];
   let scoredBin = null;
   let capture = capturedBin;
+  let splat = null;
 
   for (let step = 0; step < substeps; step++) {
+    const hits = [];
     const previous = { x: ball.x, y: ball.y, z: ball.z };
     ball.vy -= gravity * dt;
     ball.vx *= dragKeep; ball.vy *= dragKeep; ball.vz *= dragKeep;
@@ -599,7 +602,7 @@ export function stepBallAgainstBins(ball, bins, tickSeconds, { ballId = "basketb
         if (detectBinScore(ball, previous, bin)) {
           scoredBin = bin.index;
           capture = bin.index;
-          contacts.push("bin-score");
+          hits.push("bin-score");
           break;
         }
       }
@@ -610,9 +613,9 @@ export function stepBallAgainstBins(ball, bins, tickSeconds, { ballId = "basketb
       const bin = nearestBinTo(ball, bins);
       if (bin) {
         const rim = resolveBinRimContact(ball, bin, flight);
-        if (rim) contacts.push(rim);
+        if (rim) hits.push(rim);
         const wall = resolveBinWallContact(ball, previous, bin, flight);
-        if (wall) contacts.push(wall);
+        if (wall) hits.push(wall);
       }
     } else {
       // A ball a bin already has is inside that bin, and nothing outside it can
@@ -624,13 +627,32 @@ export function stepBallAgainstBins(ball, bins, tickSeconds, { ballId = "basketb
     // The room, through the classic cabinet's own resolvers. A ball that missed
     // every bin bounces and rolls exactly the way it does on the hoop court.
     const ceiling = resolveCeilingContact(ball, flight);
-    if (ceiling) contacts.push(ceiling);
+    if (ceiling) hits.push(ceiling);
     const backWall = resolveBackWall(ball, flight);
-    if (backWall) contacts.push(backWall);
+    if (backWall) hits.push(backWall);
     const floor = resolveFloorContact(ball, dt, flight);
-    if (floor) contacts.push(floor);
+    if (floor) hits.push(floor);
+
+    contacts.push(...hits);
+    // A make is swallowed by the bin. Everywhere else, fragile balls keep the
+    // catalog's normal rule: wall or floor replaces the ball with a splat.
+    const burst = capture === null && hits.find((hit) => ballSplatsOn(ballId, hit));
+    if (burst) {
+      splat = stickBall(ball, burst);
+      break;
+    }
   }
-  return { contacts, scoredBin, capturedBin: capture };
+  return { contacts, scoredBin, capturedBin: capture, splat };
+}
+
+function stickBall(ball, surface) {
+  const speed = Math.hypot(ball.vx, ball.vy, ball.vz);
+  ball.vx = 0;
+  ball.vy = 0;
+  ball.vz = 0;
+  ball.omegaX = 0;
+  ball.splat = { surface, x: ball.x, y: ball.y, z: ball.z, speed };
+  return ball.splat;
 }
 
 /**

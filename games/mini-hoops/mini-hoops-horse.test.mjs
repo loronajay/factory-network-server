@@ -11,6 +11,7 @@ import {
   createHorseMatchState,
   sanitizeHorsePlacement,
   serializeHorseMatch,
+  sanitizeHorseShot,
 } from "./server/horse-match-engine.mjs";
 import { PLACEMENT_BOUNDS, placedBinAt } from "./shared/scripts/sim/bin-placement.js";
 import { horsePowerForDepth } from "./shared/scripts/sim/horse-shot.js";
@@ -84,6 +85,24 @@ test("the server rules on the pull, and a claimed outcome is not even read", () 
   assert.equal("made" in state.lastShot.intent, false);
   assert.equal(state.match.players[0].letters, 0, "a setter who misses loses nothing");
   assert.equal(state.match.turn, 1, "and control passes");
+});
+
+test("a shot's catalog ball is sanitized and carried into the ruling", () => {
+  assert.equal(sanitizeHorseShot({ ballId: "snowball" }).ballId, "snowball");
+  assert.equal(sanitizeHorseShot({ ballId: "../../bad" }).ballId, "basketball");
+
+  let state = createHorseMatchState(lobby(), 2_000);
+  state = applyHorsePlacement(state, "socket-a", STILL_BIN);
+  let adjudicatedBall = "";
+  state = applyHorseShot(
+    state,
+    "socket-a",
+    { ...MISS, ballId: "paper" },
+    3_000,
+    ({ intent }) => { adjudicatedBall = intent.ballId; return { made: false }; },
+  );
+  assert.equal(adjudicatedBall, "paper");
+  assert.equal(state.lastShot.intent.ballId, "paper");
 });
 
 test("a shot with nothing placed is ignored rather than adjudicated", () => {

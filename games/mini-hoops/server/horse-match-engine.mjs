@@ -26,6 +26,7 @@ import {
   shotSetupFor,
 } from "../shared/scripts/sim/horse.js";
 import { AIM_MAX_X, AIM_MIN_X } from "../shared/scripts/sim/constants.js";
+import { ballById } from "../shared/scripts/assets/ball-catalog.js";
 import { adjudicateHorseShot } from "./horse-adjudicator.mjs";
 
 export const HORSE_GAME_ID = "mini-hoops-horse";
@@ -73,6 +74,9 @@ export function sanitizeHorseShot(value = {}) {
     loft: clamp(value.loft, 0, 1, 1),
     motionSeconds: clamp(value.motionSeconds, 0, MAX_MOTION_SECONDS, 0),
     expectedShots: Math.max(0, Math.floor(clamp(value.expectedShots, 0, 10_000, 0))),
+    // The id is resolved against the mirrored catalog before it reaches either
+    // physics or a client replay. Raw input is never an asset path.
+    ballId: ballById(value.ballId).id,
   };
 }
 
