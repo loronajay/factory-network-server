@@ -174,11 +174,25 @@ export function applyHorseShot(state, clientId, rawIntent, now = Date.now(), adj
   const setup = shotSetupFor(state.match, state.pendingSetup);
   if (!setup) return state;
 
+  // BALL CHOICE BELONGS TO THE SETTER. A matcher owes the whole standing shot,
+  // not merely its bin. Ignore any replacement ball a crafted or stale client
+  // submits and adjudicate with the catalog ball recorded by the made setup.
+  if (state.match.phase === PHASE_MATCH) {
+    intent.ballId = ballById(state.match.standingShot?.ballId).id;
+  }
+
+  // `resolveHorseShot` stores a made setter's setup as `standingShot`. Carrying
+  // the sanitized ball on that same object makes it replicated match state and
+  // keeps reconnects, both clients and adjudication on the identical shot.
+  const recordedSetup = state.match.phase === PHASE_MATCH
+    ? setup
+    : { ...setup, ballId: intent.ballId };
+
   const ruling = adjudicate({ intent, setup, motionSeconds: intent.motionSeconds }) || {};
   const made = ruling.made === true;
 
   const next = structuredClone(state);
-  const outcome = resolveHorseShot(next.match, made, setup);
+  const outcome = resolveHorseShot(next.match, made, recordedSetup);
   next.pendingSetup = null;
   next.sequence += 1;
   next.lastShot = {
@@ -187,7 +201,7 @@ export function applyHorseShot(state, clientId, rawIntent, now = Date.now(), adj
     seat,
     serverAt: now,
     intent,
-    setup,
+    setup: recordedSetup,
     made,
     kind: outcome.kind || "",
     letter: outcome.letter === true,

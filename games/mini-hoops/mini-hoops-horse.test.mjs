@@ -105,6 +105,30 @@ test("a shot's catalog ball is sanitized and carried into the ruling", () => {
   assert.equal(state.lastShot.intent.ballId, "paper");
 });
 
+test("a matcher is adjudicated with the setter's ball, never their submitted replacement", () => {
+  let state = createHorseMatchState(lobby(), 2_000);
+  state = applyHorsePlacement(state, "socket-a", STILL_BIN);
+  state = applyHorseShot(
+    state,
+    "socket-a",
+    { ...perfectShot(STILL_BIN), ballId: "bowling-ball" },
+    3_000,
+    () => ({ made: true }),
+  );
+  assert.equal(state.match.standingShot.ballId, "bowling-ball");
+
+  let adjudicatedBall = "";
+  state = applyHorseShot(
+    state,
+    "socket-b",
+    { ...MISS, expectedShots: 1, ballId: "paper" },
+    3_100,
+    ({ intent }) => { adjudicatedBall = intent.ballId; return { made: false }; },
+  );
+  assert.equal(adjudicatedBall, "bowling-ball");
+  assert.equal(state.lastShot.intent.ballId, "bowling-ball");
+});
+
 test("a shot with nothing placed is ignored rather than adjudicated", () => {
   const state = createHorseMatchState(lobby(), 2_000);
   assert.equal(applyHorseShot(state, "socket-a", perfectShot(STILL_BIN), 3_000), state);
