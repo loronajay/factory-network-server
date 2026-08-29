@@ -5,13 +5,13 @@
 // turns those inputs into a round lives in `../shared/`, which is a byte-for-byte mirror of the
 // cabinet's pure layer, so "who was caught" is answered by the same code in both places.
 //
-// Not here yet: the demons. Online rounds open with the hotel empty of them, because the demon's
-// navigation still lives in the cabinet's rendering module. `endRoundByDemon` is already wired to
-// the one place a round is allowed to end, so nothing downstream changes when the hunt arrives.
+// The demons hunt here too. Their navigation, their line of sight and the catch they resolve all
+// live in the mirrored `demon-logic.js`, and the doors they walk through in `fixtures-logic.js`, so
+// the hotel a client draws and the hotel this server adjudicates are the same building.
 import {
   CONFIG, FLOOR_DEFS, FLASHLIGHT_CONFIG, ROUND_CONFIG, SANITY_CONFIG, STAMINA_CONFIG,
   floorY, keyIdForFloor, keyLabelForFloor,
-  collision, layout, movement, plan, round, sanity, sim, stamina, flashlight,
+  collision, demon, enemy, fixtures, layout, movement, plan, round, sanity, sim, stamina, flashlight,
 } from "../shared/index.mjs";
 
 export const HIDE_AND_SEEK_GAME_ID = "hide-and-seek";
@@ -51,6 +51,19 @@ function sanityZones(hotel) {
 function clean(value, max, fallback = "") {
   const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
   return (text || fallback).slice(0, max);
+}
+
+// Every random choice a round makes — who is it, which spawn, where a demon patrols — comes out of
+// the match seed, so a round can be replayed from its inputs. `Math.random` would make the
+// authority's own history unreproducible.
+export function seededRandom(seed) {
+  let value = seedNumber(seed) || 1;
+  return () => {
+    value ^= value << 13; value >>>= 0;
+    value ^= value >> 17;
+    value ^= value << 5; value >>>= 0;
+    return value / 4294967296;
+  };
 }
 
 // A seed is a room code's worth of characters, not a number, so it is folded into one.
@@ -100,14 +113,16 @@ export function createHideAndSeekMatchState(lobby, startAt) {
   const seekerId = chooseSeeker(memberIds, seed);
   const space = sim.createPlanSpace({ plan, collision, hotel, config: CONFIG });
   const engine = sim.createSimulation({
-    movement, round, stamina, flashlight, sanity, space,
-    zones: sanityZones(hotel),
+    movement, round, stamina, flashlight, sanity, fixtures, demon, enemy, layout,
+    space, plan: hotel, zones: sanityZones(hotel), random: seededRandom(seed),
     config: {
       player: CONFIG,
       round: ROUND_CONFIG,
       stamina: STAMINA_CONFIG,
       sanity: SANITY_CONFIG,
       flashlight: FLASHLIGHT_CONFIG,
+      fixtures: CONFIG,
+      demon: CONFIG,
     },
   });
   const seats = seatPlayers(hotel, memberIds, seekerId, seed);
@@ -168,8 +183,8 @@ export function advanceHideAndSeekMatch(match, now = Date.now()) {
   return match;
 }
 
-// A demon kill and a lost seeker are the same call, because the round has exactly one place it is
-// allowed to end. This is the hook the hunt will use once it runs server-side.
+// The demons resolve their own catches inside the tick now. This stays because a round still has
+// exactly one place it is allowed to end, and a dropped seeker has to end it the same way.
 export function endRoundByDemon(match, playerId) {
   if (!match || match.phase === "complete") return match;
   match.state = match.engine.resolveDemonCatch(match.state, playerId);
@@ -211,6 +226,13 @@ export function serializeHideAndSeekMatch(match, serverNow = Date.now()) {
     serverNow,
     tick: snapshot.tick,
     round: snapshot.round,
+    // The building's moving parts, the hunt, and the batteries on the floor. A client draws all of
+    // this; it decides none of it.
+    fixtures: snapshot.fixtures,
+    demons: snapshot.demons,
+    threat: snapshot.threat,
+    pickups: snapshot.pickups,
+    events: snapshot.events,
     players: snapshot.players.map((player) => ({
       ...player,
       name: match.profiles.get(player.id)?.name || "Guest",

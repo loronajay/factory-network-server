@@ -20,6 +20,8 @@ import "./stamina-logic.js";
 import "./sanity-logic.js";
 import "./flashlight-logic.js";
 import "./enemy-logic.js";
+import "./fixtures-logic.js";
+import "./demon-logic.js";
 import "./sim-logic.js";
 
 export {
@@ -43,8 +45,10 @@ export const stamina = globalThis.HotelStamina;
 export const sanity = globalThis.HotelSanity;
 export const flashlight = globalThis.HotelFlashlight;
 export const enemy = globalThis.HotelEnemyLogic;
+export const fixtures = globalThis.HotelFixtures;
+export const demon = globalThis.HotelDemon;
 export const sim = globalThis.HotelSim;
 
-for (const [name, api] of Object.entries({ layout, plan, collision, movement, round, stamina, sanity, flashlight, enemy, sim })) {
+for (const [name, api] of Object.entries({ layout, plan, collision, movement, round, stamina, sanity, flashlight, enemy, fixtures, demon, sim })) {
   if (!api) throw new Error(`Hide and Seek shared module "${name}" failed to load`);
 }

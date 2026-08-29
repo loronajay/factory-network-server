@@ -165,8 +165,10 @@
       plant: [],
     };
 
+    // Every placement carries a stable id. A drawer is a contested object online — who searched it
+    // and who got the key are answers the authority gives — so it has to be nameable without a mesh.
     function furnish(floor, baseY, type, x, z, rotationY = 0, extra = {}) {
-      const placement = { type, floor, x, z, rotationY, y: baseY, ...extra };
+      const placement = { id: `fx-${floor}-${furnishings.length}`, type, floor, x, z, rotationY, y: baseY, ...extra };
       furnishings.push(placement);
       for (const part of FURNISHING_COLLIDERS[type] || []) {
         const offset = rotateY(part.x || 0, part.z || 0, rotationY);

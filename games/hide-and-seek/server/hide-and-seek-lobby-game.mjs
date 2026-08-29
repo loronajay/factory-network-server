@@ -93,6 +93,13 @@ export const hideAndSeekLobbyGame = {
   applyReconnect(lobby, clientId) {
     return applyHideAndSeekReconnect(lobby?.hideAndSeekMatch, clientId);
   },
+  // A resumed guest walks back into a round that never stopped, so the first thing they need is the
+  // world as it is now — not the lobby they left.
+  broadcastAfterReconnect(lobby) {
+    broadcastMatch(lobby, lobby?.hideAndSeekMatch?.phase === "complete");
+    sendLobbyUpdated(lobby);
+    return true;
+  },
   broadcastAfterLeave(lobby) {
     broadcastMatch(lobby, lobby?.hideAndSeekMatch?.phase === "complete");
     sendLobbyUpdated(lobby);

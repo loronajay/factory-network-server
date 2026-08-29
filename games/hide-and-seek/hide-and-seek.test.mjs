@@ -154,3 +154,85 @@ test("the lobby seats between two and eight guests", () => {
   assert.deepEqual(hideAndSeekLobbyGame.lobbyLimits, { minPlayers: 2, maxPlayers: 8 });
   assert.equal(hideAndSeekLobbyGame.gameId, "hide-and-seek");
 });
+
+test("the hotel is not empty: two demons hunt, and they walk the same building the clients draw", () => {
+  const match = createHideAndSeekMatchState(lobby(), 1_000);
+  const opening = serializeHideAndSeekMatch(match, 1_000);
+
+  assert.equal(opening.demons.length, 2, "The Bellhop and The Housekeeper");
+  assert.deepEqual(opening.demons.map((entry) => entry.id).sort(), ["bellhop", "housekeeper"]);
+  assert.notEqual(opening.demons[0].y, opening.demons[1].y, "they must not open the round on one floor");
+
+  run(match, 20);
+  const later = serializeHideAndSeekMatch(match);
+  const moved = later.demons.some((entry, index) => Math.hypot(entry.x - opening.demons[index].x, entry.z - opening.demons[index].z) > 2);
+  assert.ok(moved, "a demon that never leaves its spawn is not hunting");
+  assert.equal(typeof later.threat, "string", "the vignette gets one aggregated state, never a per-demon tracker");
+  for (const entry of later.demons) assert.equal("route" in entry, false);
+});
+
+test("fixtures are replicated, and a client never asserts one", () => {
+  const match = createHideAndSeekMatchState(lobby(), 1_000);
+  run(match, 2);
+  const view = serializeHideAndSeekMatch(match);
+
+  assert.equal(typeof view.fixtures.elevator.y, "number");
+  assert.equal(view.fixtures.elevator.doorAmount, 0, "the cabin is shut around the seeker for the head start");
+  assert.equal(typeof view.fixtures.doors, "object");
+  assert.ok(Array.isArray(view.pickups));
+
+  // The interact flag is the only thing a client may say about a door, and it is a request.
+  assert.equal(applyHideAndSeekInput(match, "socket-b", { forward: 0, interact: true, roomNumber: "105", open: true }), true);
+  assert.equal(match.inputs.get("socket-b").interact, true);
+  assert.equal("roomNumber" in match.inputs.get("socket-b"), false);
+  assert.equal("open" in match.inputs.get("socket-b"), false);
+});
+
+test("the head start ends by releasing the cabin, and the seeker walks out of it", () => {
+  const match = createHideAndSeekMatchState(lobby(), 1_000);
+  for (const id of MEMBERS) applyHideAndSeekInput(match, id, walk());
+  run(match, 44);
+  assert.equal(serializeHideAndSeekMatch(match).round.phase, "hiding");
+
+  run(match, 50, match.startAt);
+  const view = serializeHideAndSeekMatch(match);
+  assert.equal(view.round.phase, "seeking");
+  assert.ok(view.fixtures.elevator.doorAmount > 0, "the doors start opening exactly on the release");
+});
+
+test("a match replays identically from its seed", () => {
+  const first = createHideAndSeekMatchState(lobby("REPLAY"), 1_000);
+  const second = createHideAndSeekMatchState(lobby("REPLAY"), 1_000);
+  for (const id of MEMBERS) {
+    applyHideAndSeekInput(first, id, walk(1.1));
+    applyHideAndSeekInput(second, id, walk(1.1));
+  }
+  run(first, 30);
+  run(second, 30);
+
+  const a = serializeHideAndSeekMatch(first, 0);
+  const b = serializeHideAndSeekMatch(second, 0);
+  assert.deepEqual(a.players, b.players);
+  assert.deepEqual(a.demons, b.demons, "an authority whose own history cannot be reproduced cannot be audited");
+});
+
+test("a reconnecting guest walks back into the body that was left standing", () => {
+  const match = createHideAndSeekMatchState(lobby(), 1_000);
+  run(match, 46);
+  const before = serializeHideAndSeekMatch(match).players.find((player) => player.id === "socket-c");
+
+  assert.equal(applyHideAndSeekDisconnect(match, "socket-c", Date.now()), true);
+  const dropped = serializeHideAndSeekMatch(match).players.find((player) => player.id === "socket-c");
+  assert.equal(dropped.connected, false);
+  assert.equal(dropped.alive, true, "a dropped hider is left standing — a free find, not a vanishing");
+  assert.equal(dropped.x, before.x);
+
+  assert.equal(applyHideAndSeekReconnect(match, "socket-c"), true);
+  const resumed = serializeHideAndSeekMatch(match).players.find((player) => player.id === "socket-c");
+  assert.equal(resumed.connected, true);
+  assert.equal(resumed.x, before.x, "they come back where their body was, not at a spawn");
+
+  // The seat is theirs again, so their inputs count again.
+  assert.equal(applyHideAndSeekInput(match, "socket-c", walk()), true);
+  assert.equal(hideAndSeekLobbyGame.broadcastAfterReconnect({ roomCode: "HOTEL", hideAndSeekMatch: match }), true);
+});
