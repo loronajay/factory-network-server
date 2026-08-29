@@ -101,6 +101,24 @@ export function screenToWorldAtZ(screenX, screenY, z) {
 }
 
 /**
+ * Invert a screen point on the floor plane, where depth is encoded by the
+ * floor line itself. This is the editor's direct depth handle: dragging the
+ * handle upstage moves a piece away from the camera without a second camera or
+ * a guessed slider mapping.
+ */
+export function screenToWorldOnFloor(screenX, screenY) {
+  const floorSpan = FLOOR_SCREEN_Y - HORIZON_SCREEN_Y;
+  const scale = Math.max(1e-6, (screenY - HORIZON_SCREEN_Y) / floorSpan);
+  const z = clampDepth((1 / scale - 1) / DEPTH_FALLOFF);
+  const safeScale = depthScaleAt(z);
+  return {
+    x: (screenX - PROJECTION_ORIGIN_X) / (PROJECTION_X_SCALE * safeScale),
+    y: FLOOR_Y,
+    z,
+  };
+}
+
+/**
  * How long a world-space length is on screen at depth `z`.
  *
  * The honest perspective term, with no floor under it — unlike

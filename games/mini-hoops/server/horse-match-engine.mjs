@@ -17,20 +17,28 @@
 // The OUTCOME: the browser sends a pull, never a result. `horse-adjudicator.mjs`
 // replays it through a mirrored copy of the cabinet's sim, and this file asks
 // `sim/horse.js` — the same rules file both clients import — what that means.
-import { normalizeBinSetup } from "../shared/scripts/sim/bin-placement.js";
 import {
+  BIN_TARGET,
+  HOOP_TARGET,
+  normalizeTrickShotTarget,
+} from "../shared/scripts/sim/trick-shot-target.js";
+import {
+  HORSE_FIXED_SETUP,
   PHASE_MATCH,
   createHorseMatch,
+  judgeHorseShot,
   normalizeWord,
   resolveHorseShot,
   shotSetupFor,
 } from "../shared/scripts/sim/horse.js";
 import { AIM_MAX_X, AIM_MIN_X } from "../shared/scripts/sim/constants.js";
 import { ballById } from "../shared/scripts/assets/ball-catalog.js";
+import { locationById } from "../shared/scripts/assets/location-catalog.js";
+import { normalizeSandboxPieces } from "../shared/scripts/sim/trick-shot.js";
 import { adjudicateHorseShot } from "./horse-adjudicator.mjs";
 
 export const HORSE_GAME_ID = "mini-hoops-horse";
-export const HORSE_PROTOCOL_VERSION = 1;
+export const HORSE_PROTOCOL_VERSION = 2;
 export const HORSE_RECONNECT_GRACE_MS = 30_000;
 
 // A SANITY BOUND, NOT A GAME RULE. The release moment has to be taken from the
@@ -55,12 +63,16 @@ export function normalizeHorseConfig(settings = {}) {
 }
 
 /**
- * A pull, and the phase of the bin's motion the player released on.
+ * A pull, and the phase of the target's motion the player released on.
  *
  * `aimY` is deliberately absent, which is the one difference from the classic
- * cabinet's shot. There the reticle rides a single fixed line and the server
- * pins it; here the validated placement's own rest height IS the vertical aim,
- * so there is nothing left for a crafted client to raise.
+ * cabinet's shot, AND IT STAYS ABSENT NOW THE HOOP IS PLACEABLE. There the
+ * reticle rides a single fixed line and the server pins it; here the validated
+ * placement's own rest height IS the vertical aim, for a bin's mouth and for a
+ * hung hoop's rim alike — `createHorseShot` reads it off the setup this server
+ * has already clamped, never off the intent. So there is nothing left for a
+ * crafted client to raise, and a hoop hung high is a hoop the setter had to
+ * reach themselves first.
  *
  * THE MOTION CLOCK IS THE CLIENT'S TO CHOOSE, and that is not a hole. A player
  * may watch a moving bin for as long as they like before releasing, so every
@@ -80,14 +92,31 @@ export function sanitizeHorseShot(value = {}) {
   };
 }
 
-/** A placement, put through the cabinet's own legal-volume clamp. */
+/**
+ * A placement, put through the cabinet's own legal-volume clamp.
+ *
+ * ONE CALL FOR BOTH TARGETS. `normalizeTrickShotTarget` picks the clamp off the
+ * kind — the bin's legal volume, or the hoop's band on the back wall — so this
+ * never chooses one itself and the two volumes stay stated in one place each,
+ * in the same modules both clients import.
+ *
+ * A SETUP WITH NO KIND IS A BIN, which is not what `trickShotTargetKind`'s own
+ * default says: it opens on the hoop, because the Trick Shot Lab does. Here the
+ * question is different — a placement submitted by a client from before the
+ * hoop existed, or a standing shot held across a deploy, carries no kind and was
+ * a bin every time. Defaulting the other way would change the target of a match
+ * already in progress.
+ */
 export function sanitizeHorsePlacement(value = {}) {
-  return normalizeBinSetup({
-    x: Number(value.x) || 0,
-    y: Number(value.y) || 0,
-    z: Number(value.z) || 0,
-    motionId: typeof value.motionId === "string" ? value.motionId : "still",
-  });
+  return {
+    ...normalizeTrickShotTarget({
+      kind: value.kind === HOOP_TARGET ? HOOP_TARGET : BIN_TARGET,
+      motionId: typeof value.motionId === "string" ? value.motionId : undefined,
+      placement: value.placement || value,
+    }),
+    locationId: locationById(value.locationId || HORSE_FIXED_SETUP.locationId).id,
+    pieces: normalizeSandboxPieces(value.pieces),
+  };
 }
 
 function playerFromLobby(lobby, clientId, index) {
@@ -189,10 +218,22 @@ export function applyHorseShot(state, clientId, rawIntent, now = Date.now(), adj
     : { ...setup, ballId: intent.ballId };
 
   const ruling = adjudicate({ intent, setup, motionSeconds: intent.motionSeconds }) || {};
-  const made = ruling.made === true;
+  const touched = Array.isArray(ruling.touched) ? ruling.touched.map(String) : [];
+  // GOING IN IS NECESSARY AND, WHILE MATCHING, NOT SUFFICIENT. A setter may
+  // build an apparatus, and the matcher owes the tools it was made through —
+  // so the ball going cleanly in having skipped one is a miss, and the client
+  // is told which of the two misses it was rather than left to read a bug.
+  const judged = judgeHorseShot(state.match, { scored: ruling.made === true, touched });
+  const made = judged.made;
 
   const next = structuredClone(state);
-  const outcome = resolveHorseShot(next.match, made, recordedSetup);
+  const outcome = resolveHorseShot(next.match, made, recordedSetup, {
+    unmet: judged.unmet,
+    touched,
+    // The pull is recorded with a setter's make, so a shot through an apparatus
+    // is one the other player's court — and its CPU — can repeat.
+    pull: intent,
+  });
   next.pendingSetup = null;
   next.sequence += 1;
   next.lastShot = {
@@ -205,6 +246,7 @@ export function applyHorseShot(state, clientId, rawIntent, now = Date.now(), adj
     made,
     kind: outcome.kind || "",
     letter: outcome.letter === true,
+    skipped: outcome.skipped === true,
     contacts: Array.isArray(ruling.contacts) ? ruling.contacts.slice(0, 16).map(String) : [],
   };
   if (next.match.status !== "playing") {
@@ -269,7 +311,7 @@ export function serializeHorseMatch(state, serverNow = Date.now()) {
     config: { ...state.config },
     seats: state.seats.map((seat) => ({ ...seat })),
     match: structuredClone(state.match),
-    pendingSetup: state.pendingSetup ? { ...state.pendingSetup } : null,
+    pendingSetup: state.pendingSetup ? structuredClone(state.pendingSetup) : null,
     sequence: state.sequence,
     lastShot: state.lastShot ? structuredClone(state.lastShot) : null,
     result: state.phase === "complete"

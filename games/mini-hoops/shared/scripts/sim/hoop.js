@@ -54,10 +54,21 @@ const BOARD_PARALLAX = depthScaleAt(BOARD_Z) / depthScaleAt(RIM_CENTER_Z);
  * derivatives in pixels/second. The derivative is not decorative: the collision
  * solver resolves the ball against a *moving* ring, and a velocity that
  * disagrees with the path makes the rim behave like it is somewhere else.
+ *
+ * `period` is how long the path takes to come back to where it started, and it
+ * exists so an envelope can be MEASURED off the path rather than declared beside
+ * it — the rule `sim/bin-placement.js` already keeps for the bin's motions, and
+ * for its reason: a hand-written reach that is subtly wrong is invisible until a
+ * placed hoop sweeps off the side of the screen. Two are not the obvious number.
+ * `cross` sweeps on a 3s cycle but hands the travel between its axes on a half-
+ * rate blend, so it only repeats after 6. `wander` is deliberately built out of
+ * incommensurate frequencies (1, 2.3, 1.7 and 0.7 against a 5.6s base) — ten of
+ * those base cycles is the first moment all four line up again, so 56.
  */
 export const HOOP_MODES = Object.freeze([
   {
     id: "still",
+    period: 1,
     label: "Still",
     hudLabel: "STILL",
     blurb: "A fixed rim. Pure shooting form.",
@@ -65,6 +76,7 @@ export const HOOP_MODES = Object.freeze([
   },
   {
     id: "horizontal",
+    period: 3.6,
     label: "Left / Right",
     hudLabel: "LEFT / RIGHT",
     blurb: "The rim sweeps across. Lead it.",
@@ -83,6 +95,7 @@ export const HOOP_MODES = Object.freeze([
   },
   {
     id: "vertical",
+    period: 3.2,
     label: "Up / Down",
     hudLabel: "UP / DOWN",
     blurb: "The rim rides up and down. Time the arc.",
@@ -101,6 +114,7 @@ export const HOOP_MODES = Object.freeze([
   },
   {
     id: "circle",
+    period: 4.2,
     label: "Circle",
     hudLabel: "CIRCLE",
     blurb: "The rim orbits. Lead it and time it at once.",
@@ -122,6 +136,7 @@ export const HOOP_MODES = Object.freeze([
   },
   {
     id: "pendulum",
+    period: 3.4,
     label: "Pendulum",
     hudLabel: "PENDULUM",
     blurb: "The rim swings on an arc, rising at both ends.",
@@ -145,6 +160,7 @@ export const HOOP_MODES = Object.freeze([
   },
   {
     id: "figure8",
+    period: 5,
     label: "Figure 8",
     hudLabel: "FIGURE 8",
     blurb: "A lemniscate. The rim crosses its own path at the centre.",
@@ -166,6 +182,7 @@ export const HOOP_MODES = Object.freeze([
   },
   {
     id: "cross",
+    period: 6,
     label: "Cross",
     hudLabel: "CROSS",
     blurb: "A sweep that rotates from side-to-side into up-and-down.",
@@ -200,6 +217,7 @@ export const HOOP_MODES = Object.freeze([
   },
   {
     id: "wander",
+    period: 56,
     label: "Wander",
     hudLabel: "WANDER",
     blurb: "Two rhythms at once. It never repeats the same lead twice.",
@@ -258,16 +276,27 @@ export function hoopModeById(id) {
  * this snapshot rather than recomputing geometry, so there is exactly one
  * definition of where the rim and board are.
  */
-export function hoopAt(modeId, elapsedSeconds) {
+export function hoopAt(modeId, elapsedSeconds, base = null) {
   const mode = hoopModeById(modeId);
   const seconds = Math.max(0, Number(elapsedSeconds) || 0);
   const { dx, dy, vx, vy } = mode.path(seconds);
 
-  const cx = HOOP_BASE_X + dx;
-  const rimY = HOOP_BASE_RIM_Y + dy;
+  // WHERE THE ASSEMBLY HANGS, WHICH IS NOT ALWAYS THE CABINET'S OWN PEG. The
+  // classic run and the practice court never pass a base, so they get
+  // `HOOP_BASE_X` / `HOOP_BASE_RIM_Y` and nothing about their calibration moves.
+  // HORSE and the Trick Shot Lab let a player slide the hoop along the back
+  // wall, and `sim/hoop-placement.js` is what decides where that is allowed to
+  // be — this function only takes the answer. There is no depth term because
+  // there is no depth choice: the board is bolted to the wall at `BOARD_Z` and
+  // the rim hangs off it at `RIM_CENTER_Z`, in every mode and every mode of play.
+  const baseX = Number.isFinite(base?.cx) ? base.cx : HOOP_BASE_X;
+  const baseRimY = Number.isFinite(base?.rimY) ? base.rimY : HOOP_BASE_RIM_Y;
+
+  const cx = baseX + dx;
+  const rimY = baseRimY + dy;
   // The same world displacement, seen at the board's depth instead of the rim's.
-  const boardCx = HOOP_BASE_X + dx * BOARD_PARALLAX;
-  const boardY = HOOP_BASE_RIM_Y - BACKBOARD_RISE + dy * BOARD_PARALLAX;
+  const boardCx = baseX + dx * BOARD_PARALLAX;
+  const boardY = baseRimY - BACKBOARD_RISE + dy * BOARD_PARALLAX;
 
   return {
     modeId: mode.id,

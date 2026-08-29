@@ -13,8 +13,10 @@ import {
   serializeHorseMatch,
   sanitizeHorseShot,
 } from "./server/horse-match-engine.mjs";
-import { PLACEMENT_BOUNDS, placedBinAt } from "./shared/scripts/sim/bin-placement.js";
-import { horsePowerForDepth } from "./shared/scripts/sim/horse-shot.js";
+import { PLACEMENT_BOUNDS } from "./shared/scripts/sim/bin-placement.js";
+import { HOOP_PLACEMENT_BOUNDS } from "./shared/scripts/sim/hoop-placement.js";
+import { REFERENCE_POWER } from "./shared/scripts/sim/constants.js";
+import { horsePowerForDepth, horseTargetAt } from "./shared/scripts/sim/horse-shot.js";
 import { projectPoint } from "./shared/scripts/sim/projection.js";
 
 function lobby(settings = { word: "PIG" }) {
@@ -31,13 +33,25 @@ function lobby(settings = { word: "PIG" }) {
 }
 
 const STILL_BIN = { x: 0, y: 0.36, z: 0.6, motionId: "still" };
+// A hung hoop, in the wire shape a client actually submits one in.
+const STILL_HOOP = { kind: "hoop", motionId: "still", placement: { cx: 440, rimY: 210 } };
 
-/** The pull that drops a ball into a given bin — the CPU's own aim. */
+/**
+ * The pull that drops a ball into a given target — the CPU's own aim.
+ *
+ * TWO GESTURES, because the two targets take two. At a bin, strength picks how
+ * far down the room the ball lands, so the perfect pull is the one whose depth
+ * is the bin's. At a hoop there is no depth to pick — it hangs at the one there
+ * is — so strength is power and the perfect pull is the calibrated reference,
+ * aimed at the rim's own lane. Getting this wrong in the test would look exactly
+ * like the adjudicator being broken.
+ */
 function perfectShot(setup, expectedShots = 0) {
-  const rest = placedBinAt(setup, 0);
+  const resolved = horseTargetAt(setup, 0);
+  const hoop = resolved.hoop;
   return {
-    power: horsePowerForDepth(rest.z),
-    aimX: projectPoint(rest).x,
+    power: hoop ? REFERENCE_POWER : horsePowerForDepth(resolved.bin.z),
+    aimX: hoop ? hoop.cx : projectPoint(resolved.bin).x,
     loft: 1,
     motionSeconds: 0,
     expectedShots,
@@ -61,8 +75,44 @@ test("a placement is re-clamped into the legal volume, however it arrives", () =
   const next = applyHorsePlacement(state, "socket-a", { x: 99, y: 99, z: 99, motionId: "nonsense" });
   assert.notEqual(next, state);
   assert.equal(next.pendingSetup.motionId, "still");
-  assert.ok(next.pendingSetup.z <= PLACEMENT_BOUNDS.maxZ + 1e-9);
+  assert.ok(next.pendingSetup.placement.z <= PLACEMENT_BOUNDS.maxZ + 1e-9);
   assert.deepEqual(next.pendingSetup, sanitizeHorsePlacement({ x: 99, y: 99, z: 99, motionId: "nonsense" }));
+});
+
+test("a setup with no kind is a bin, not the target catalog's own default", () => {
+  // `trickShotTargetKind` opens on the hoop because the Trick Shot Lab does. A
+  // HORSE placement submitted by a client from before the hoop existed carries
+  // no kind and was a bin every time, so defaulting the other way here would
+  // change the target of a match already in flight.
+  assert.equal(sanitizeHorsePlacement(STILL_BIN).kind, "bin");
+  assert.equal(sanitizeHorsePlacement({}).kind, "bin");
+  assert.equal(sanitizeHorsePlacement(STILL_HOOP).kind, "hoop");
+});
+
+test("a hung hoop is clamped onto the wall, and its motion catalog is the hoop's", () => {
+  const wild = sanitizeHorsePlacement({
+    kind: "hoop",
+    motionId: "sideways",
+    placement: { cx: 9_000, rimY: -9_000 },
+  });
+  // `sideways` is a BIN motion. The ids do not cross, so it falls back to the
+  // hoop catalog's own default rather than being mapped across.
+  assert.equal(wild.motionId, "still");
+  assert.ok(wild.placement.cx <= HOOP_PLACEMENT_BOUNDS.maxX + 1e-9);
+  assert.ok(wild.placement.cx >= HOOP_PLACEMENT_BOUNDS.minX - 1e-9);
+  assert.ok(wild.placement.rimY >= HOOP_PLACEMENT_BOUNDS.minY - 1e-9);
+  assert.ok(wild.placement.rimY <= HOOP_PLACEMENT_BOUNDS.maxY + 1e-9);
+});
+
+test("a placement validates and preserves its HORSE trick-shot tools", () => {
+  const setup = sanitizeHorsePlacement({
+    ...STILL_BIN,
+    locationId: "warehouse",
+    pieces: [{ type: "board", id: "bank-pad", x: 0.4, y: 0.8, z: 0.5, restitution: 0.9 }],
+  });
+  assert.equal(setup.locationId, "warehouse");
+  assert.equal(setup.pieces.length, 1);
+  assert.equal(setup.pieces[0].id, "bank-pad");
 });
 
 test("only the player whose turn it is may place, and never a matcher", () => {
@@ -201,6 +251,16 @@ test("the serialized snapshot carries the bin both clients have to draw", () => 
   assert.equal(snapshot.pendingSetup.motionId, "sideways");
   assert.equal(snapshot.match.word, "PIG");
   assert.equal(snapshot.result, null);
+});
+
+test("the production adjudicator rules on a hung hoop as well as a placed bin", () => {
+  // The whole point of the dispatch: the same call, the same wire shape, and a
+  // different integrator underneath. A hoop shot is ruled through `stepBall`.
+  const setup = sanitizeHorsePlacement(STILL_HOOP);
+  assert.equal(adjudicateHorseShot({ intent: perfectShot(setup), setup, motionSeconds: 0 }).made, true);
+  // And it is genuinely the hoop being hit, not something that scores anyway.
+  const wide = { ...perfectShot(setup), aimX: HOOP_PLACEMENT_BOUNDS.minX };
+  assert.equal(adjudicateHorseShot({ intent: wide, setup, motionSeconds: 0 }).made, false);
 });
 
 test("the production adjudicator agrees with the cabinet's own perfect shot", () => {

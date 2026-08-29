@@ -31,6 +31,7 @@ import { definition as speedDemon } from "./speed-demon/server/speed-demon.game.
 import { definition as yamBowling } from "./yam-bowling/server/yam-bowling.game.mjs";
 import { definition as miniHoops } from "./mini-hoops/server/mini-hoops.game.mjs";
 import { definition as miniHoopsHorse } from "./mini-hoops/server/mini-hoops-horse.game.mjs";
+import { definition as hideAndSeek } from "./hide-and-seek/server/hide-and-seek.game.mjs";
 
 const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 
@@ -40,7 +41,7 @@ const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 let definitions = null;
 function allDefinitions() {
   if (!definitions) {
-    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse];
+    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse, hideAndSeek];
   }
   return definitions;
 }

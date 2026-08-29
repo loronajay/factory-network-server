@@ -133,13 +133,112 @@ export function shotSetupFor(match, workingSetup) {
 }
 
 /**
+ * THE TOOLS A MATCHER OWES.
+ *
+ * A setter may build a whole apparatus — a springboard, a cannon, a pad to bank
+ * off — and before this rule existed the matcher could ignore every piece of it
+ * and drop the ball straight in the bin, which makes the tools scenery. So a
+ * made SET shot records the tools it actually touched, and the matching shot is
+ * only a match if it touches all of them too.
+ *
+ * IT IS THE TOOLS THE SETTER TOUCHED, NOT THE TOOLS THEY PUT DOWN. A pad the
+ * setter arranged and then flew past is not part of the shot they made, and
+ * holding a matcher to it would be asking for a shot nobody has proved. It also
+ * closes the obvious abuse from the other side: a setter cannot litter the room
+ * with unreachable tools, because the only ones that count are the ones their
+ * own ball found.
+ *
+ * UNORDERED, AND DELIBERATELY. "Off the pad, into the cannon, into the bin" and
+ * "into the cannon, off the pad, into the bin" are different shots, but the
+ * second is usually not physically available anyway, and a rule about ORDER is
+ * one the HUD cannot state in a line and the player cannot see being broken.
+ * Touch them all and the make stands.
+ */
+export function requiredPieceIds(setup) {
+  const available = new Set((Array.isArray(setup?.pieces) ? setup.pieces : []).map((piece) => piece?.id));
+  const required = Array.isArray(setup?.requiredPieces) ? setup.requiredPieces : [];
+  // Intersected with the tools that are really there: a duty naming a piece the
+  // setup does not carry is one no shot could ever discharge.
+  return [...new Set(required.map(String).filter((id) => available.has(id)))];
+}
+
+/** Which of a standing shot's required tools an attempt failed to touch. */
+export function unmetPieceIds(setup, touched = []) {
+  const hit = new Set((Array.isArray(touched) ? touched : []).map(String));
+  return requiredPieceIds(setup).filter((id) => !hit.has(id));
+}
+
+/**
+ * Stamp a made setter's setup with the duty it just proved.
+ *
+ * Called with what the setter's own ball touched, so the record that becomes the
+ * standing shot carries both the apparatus and the part of it that counts.
+ *
+ * THE PULL THAT PROVED IT TRAVELS TOO, when there is a duty. A shot through an
+ * apparatus is not one a matcher can find by aiming at the target — that is the
+ * whole point of the rule — and the CPU has no hands to learn it with, so the
+ * one pull already known to route the whole way is recorded with the shot it
+ * made. `sim/horse-cpu.js` is the only thing that reads it, and what it does
+ * with it is exactly what the mode asks a person for: repeat the shot.
+ *
+ * It is recorded ONLY for a shot with a duty. A plain standing shot is one the
+ * CPU's own lead already answers, and a pull on every setup would be state
+ * replicated, serialized and reconnected through for nothing.
+ */
+export function recordShotDuty(setup, touched = [], pull = null) {
+  if (!setup) return setup;
+  const hit = new Set((Array.isArray(touched) ? touched : []).map(String));
+  const pieces = Array.isArray(setup.pieces) ? setup.pieces : [];
+  const requiredPieces = pieces.map((piece) => piece?.id).filter((id) => hit.has(id));
+  const stamped = { ...setup, requiredPieces };
+  if (requiredPieces.length > 0 && pull) stamped.provenPull = normalizeProvenPull(pull);
+  else delete stamped.provenPull;
+  return stamped;
+}
+
+/** The four numbers a shot can be repeated from, and nothing else off the wire. */
+export function normalizeProvenPull(pull = {}) {
+  const number = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
+  return {
+    power: number(pull.power),
+    aimX: number(pull.aimX),
+    loft: number(pull.loft, 1),
+    motionSeconds: Math.max(0, number(pull.motionSeconds)),
+  };
+}
+
+/**
+ * Did this shot count?
+ *
+ * Going in is necessary and, while MATCHING, no longer sufficient. Split out
+ * from `resolveHorseShot` because the caller has to know WHY a make did not
+ * stand — the HUD says so, and "you missed" is the wrong sentence for a ball
+ * that went cleanly through the bin having skipped the springboard.
+ *
+ * A SETTER IS NEVER HELD TO A DUTY. They are inventing the shot; whatever their
+ * ball touches on the way in becomes the duty, so there is nothing to check.
+ */
+export function judgeHorseShot(match, { scored = false, touched = [] } = {}) {
+  if (match?.phase !== PHASE_MATCH) return { made: scored === true, unmet: [] };
+  const unmet = scored === true ? unmetPieceIds(match.standingShot, touched) : [];
+  return { made: scored === true && unmet.length === 0, unmet };
+}
+
+/**
  * Resolve a completed shot.
  *
  * @param setup the bin setup the shot was taken against — recorded as the
  *              standing shot when a setter makes one.
+ * @param unmet the required tools this attempt skipped, from `judgeHorseShot`.
+ * @param pull  the pull that took this shot, recorded with a setter's make so
+ *              a shot through an apparatus can be repeated. See `recordShotDuty`.
+ * @param touched the tools this shot really hit. A made setter's setup is
+ *              stamped with them on the way in, so the duty is recorded in the
+ *              one place that stores a standing shot rather than at every
+ *              caller that might forget to.
  * @returns a description of what changed, for the HUD; the match is mutated.
  */
-export function resolveHorseShot(match, made, setup = null) {
+export function resolveHorseShot(match, made, setup = null, { unmet = [], touched = null, pull = null } = {}) {
   if (!match || match.status !== "playing") {
     return { accepted: false };
   }
@@ -152,7 +251,7 @@ export function resolveHorseShot(match, made, setup = null) {
     if (made) {
       // The shot is now owed. The matcher shoots next, at exactly this bin.
       match.setter = shooter;
-      match.standingShot = setup;
+      match.standingShot = touched ? recordShotDuty(setup, touched, pull) : setup;
       match.phase = PHASE_MATCH;
       match.turn = other;
       match.lastOutcome = { shooter, made: true, letter: false, kind: "set" };
@@ -186,7 +285,10 @@ export function resolveHorseShot(match, made, setup = null) {
   match.standingShot = null;
   match.phase = PHASE_SET;
   match.turn = match.setter;
-  match.lastOutcome = { shooter, made: false, letter: true, kind: "missed" };
+  // `skipped` separates the two ways a matcher loses a letter: the ball did
+  // not go in, or it did and left one of the setter's tools untouched. The
+  // second reads as a bug unless the HUD says which it was.
+  match.lastOutcome = { shooter, made: false, letter: true, kind: "missed", skipped: unmet.length > 0 };
 
   if (match.players[shooter].letters >= match.word.length) {
     match.status = "won";
@@ -199,16 +301,24 @@ export function resolveHorseShot(match, made, setup = null) {
 /**
  * What the CPU does with a turn.
  *
- * Two decisions, and they are deliberately separate. `makeChance` is whether it
- * sinks the shot; `boldness` is how adventurous a bin it places when it is
+ * Three decisions, and they are deliberately separate. `makeChance` is whether
+ * it sinks the shot; `boldness` is how adventurous a target it places when it is
  * setting. A weak CPU that placed brutal shots would be no easier to beat — it
  * would just miss its own setups all day and never put a letter on anyone. So
  * boldness rises with skill, and the easy CPU sets shots it can mostly hit.
+ *
+ * `trickChance` is the third, and it is stated separately from boldness rather
+ * than derived off it because it is not a harder question of the same kind — it
+ * is a DIFFERENT kind of question. A trick shot has an apparatus in it, so the
+ * answer is not a pull anyone can find by aiming; the opponent has to be shown
+ * the recipe and repeat it. The easy CPU never asks one, and that is a floor
+ * rather than a curve: the first thing a new player has to learn is the meter,
+ * and there is nothing in this that teaches it.
  */
 export const HORSE_DIFFICULTIES = Object.freeze([
-  Object.freeze({ id: "easy", label: "Easy", makeChance: 0.5, boldness: 0.25 }),
-  Object.freeze({ id: "medium", label: "Medium", makeChance: 0.68, boldness: 0.6 }),
-  Object.freeze({ id: "hard", label: "Hard", makeChance: 0.85, boldness: 1 }),
+  Object.freeze({ id: "easy", label: "Easy", makeChance: 0.5, boldness: 0.25, trickChance: 0 }),
+  Object.freeze({ id: "medium", label: "Medium", makeChance: 0.68, boldness: 0.6, trickChance: 0.35 }),
+  Object.freeze({ id: "hard", label: "Hard", makeChance: 0.85, boldness: 1, trickChance: 0.5 }),
 ]);
 
 export function horseDifficultyById(id) {
@@ -217,6 +327,20 @@ export function horseDifficultyById(id) {
 
 export function cpuMakesHorseShot(difficulty = "medium", random = Math.random) {
   return random() < horseDifficultyById(difficulty).makeChance;
+}
+
+/**
+ * Does the CPU reach for an apparatus this turn?
+ *
+ * Asked BEFORE the target is placed and separately from whether one could be
+ * built, because the two are different failures and only one of them is a
+ * decision. A CPU that declined is setting a plain shot on purpose; a CPU whose
+ * plan did not converge is setting one because `sim/horse-plan.js` could not
+ * prove anything, and the mode's own rule is that a shot nobody has made is not
+ * a shot anybody owes.
+ */
+export function cpuSetsTrickShot(difficulty = "medium", random = Math.random) {
+  return random() < (horseDifficultyById(difficulty).trickChance || 0);
 }
 
 /**
@@ -249,6 +373,27 @@ export function chooseCpuBinSetup(difficulty = "medium", random = Math.random, m
     height: Math.max(0, spread(1)),
     motionId: motions[Math.floor(random() * motions.length)],
   };
+}
+
+/**
+ * The target the CPU sets a shot at.
+ *
+ * The FIRST of a setter's four decisions, because it decides which motion
+ * catalog the second one is drawn from. Unlocked by boldness the way the motions
+ * and the balls are, and for the same reason: the timid end stays on the floor
+ * bin, whose gesture a new player has already been taught by the mode itself,
+ * and a braver CPU will hang the hoop and ask for the cabinet's classic pull
+ * instead. Below a third of boldness it never reaches past the first kind.
+ *
+ * The list comes from the caller, so this module still owns no catalog. It
+ * relies on that list being ordered from the plainest question to the boldest —
+ * the same contract `chooseCpuTurnBall` relies on for the ball roster.
+ */
+export function chooseCpuTargetKind(difficulty = "medium", random = Math.random, kinds = []) {
+  if (!kinds.length) return null;
+  const { boldness } = horseDifficultyById(difficulty);
+  const reach = boldness < 0.34 ? 1 : Math.max(1, Math.round(kinds.length * boldness));
+  return kinds[Math.floor(random() * Math.min(reach, kinds.length))];
 }
 
 /**
