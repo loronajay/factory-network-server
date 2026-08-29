@@ -120,7 +120,8 @@
     // still ticks, which is what keeps `tests/sim-logic.test.js` free of a whole hotel.
     const catalog = hotel && fixtures ? fixtures.createFixtureCatalog(hotel, { config: fixtureConfig }) : [];
     const catalogById = new Map(catalog.map((item) => [item.id, item]));
-    const doorByRoom = new Map(catalog.filter((item) => item.kind === 'door').map((item) => [item.roomNumber, item]));
+    const doorCatalog = catalog.filter((item) => item.kind === 'door');
+    const doorByRoom = new Map(doorCatalog.map((item) => [item.roomNumber, item]));
     const rooms = hotel ? hotel.roomCenters.map((room) => ({ roomNumber: room.roomNumber, floor: room.floor, x: room.x, z: room.z })) : [];
     const stairLayout = layout ? layout.createStairLayout({ floorCount: 4, floorHeight: player.floorHeight }) : null;
     const stairShell = layout ? layout.createStairwellShellLayout() : null;
@@ -316,6 +317,15 @@
         openDoor: (roomNumber, options) => {
           const item = doorByRoom.get(roomNumber);
           if (item && doors) doors = fixtures.forceDoorOpen(doors, item, options);
+        },
+        openDoorAhead: (demon, target, options) => {
+          if (!doors) return;
+          const closed = doorCatalog.filter((item) => {
+            const door = doors.doors[item.id];
+            return door && (!door.open || door.locked);
+          });
+          const item = demonLogic.selectBlockingDoor(demon, target, closed, demonConfig);
+          if (item) doors = fixtures.forceDoorOpen(doors, item, options);
         },
         setHunted: (target) => { if (target) hunted.add(target.id); },
         emit: (event) => events.push(event),

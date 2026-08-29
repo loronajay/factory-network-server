@@ -36,6 +36,8 @@
     huntSpeed: 3.05,
     roomChance: 0.24,
     doorOpenAngle: Math.PI / 2,
+    doorReach: 1.65,
+    doorPathWidth: 1.15,
     sightTolerance: 0.18,
   });
 
@@ -73,6 +75,7 @@
       awareness: null,
       route: [],
       routePurpose: 'roam',
+      avoidance: null,
       moving: false,
       detectionCooldown: 0,
       chasePlanCooldown: 0,
@@ -245,18 +248,52 @@
     return demon.routePurpose === 'hunt' ? cfg.huntSpeed : cfg.walkSpeed;
   }
 
+  // Select only a doorway that is immediately ahead on the current leg. A broad "nearest door"
+  // check can open a room behind the demon (or the matching doorway one floor above), while still
+  // leaving the collider in front of its face untouched.
+  function selectBlockingDoor(demon, target, doors, config) {
+    const cfg = settings(config);
+    const routeX = target.x - demon.x;
+    const routeZ = target.z - demon.z;
+    const routeLength = Math.hypot(routeX, routeZ);
+    if (!(routeLength > 0.01)) return null;
+    let selected = null;
+    let bestScore = Infinity;
+    for (const door of doors || []) {
+      if (!door) continue;
+      if (door.floor && demon.floor && door.floor !== demon.floor) continue;
+      if (Number.isFinite(door.y) && Math.abs(door.y - demon.y) > cfg.catchHeight) continue;
+      const dx = door.x - demon.x;
+      const dz = door.z - demon.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > cfg.doorReach) continue;
+      const progress = (dx * routeX + dz * routeZ) / routeLength;
+      if (progress < -0.05 || progress > routeLength + cfg.bodyRadius) continue;
+      const pathDistance = Math.abs(dx * routeZ - dz * routeX) / routeLength;
+      if (pathDistance > cfg.doorPathWidth) continue;
+      const score = distance + pathDistance * 0.5;
+      if (score < bestScore) { selected = door; bestScore = score; }
+    }
+    return selected;
+  }
+
   function walk(demon, delta, ctx) {
     const cfg = ctx.config;
     const target = demon.route[0];
     if (!target) return { ...demon, moving: false };
+    const { ENEMY_STATES } = ctx.enemy;
+    const unlock = demon.routePurpose === 'hunt'
+      || demon.awareness.state === ENEMY_STATES.CHASE
+      || demon.awareness.state === ENEMY_STATES.SEARCH;
+    ctx.openDoorAhead(demon, target, { unlock });
     const body = { height: cfg.bodyHeight, radius: cfg.bodyRadius };
     const step = ctx.movement.stepToward(ctx.space, body, { x: demon.x, y: demon.y, z: demon.z }, target, {
-      speed: speedFor(demon, ctx), delta, arriveRadius: cfg.arriveRadius, guided: !!target.guided,
+      speed: speedFor(demon, ctx), delta, arriveRadius: cfg.arriveRadius, guided: !!target.guided, avoidance: demon.avoidance,
     });
     if (step.arrived) {
-      return { ...demon, x: round6(step.x), y: round6(step.y), z: round6(step.z), route: demon.route.slice(1), moving: false };
+      return { ...demon, x: round6(step.x), y: round6(step.y), z: round6(step.z), route: demon.route.slice(1), moving: false, avoidance: null };
     }
-    if (!step.moved) return { ...demon, moving: false };
+    if (!step.moved) return { ...demon, moving: false, avoidance: step.avoidance || null };
     const turn = Math.min(1, delta * cfg.turnRate);
     let facingX = demon.facingX;
     let facingZ = demon.facingZ;
@@ -272,6 +309,7 @@
       x: round6(step.x), y: round6(step.y), z: round6(step.z),
       facingX: round6(facingX), facingZ: round6(facingZ),
       moving: Math.hypot(step.dirX, step.dirZ) > 0.01,
+      avoidance: step.avoidance || null,
     };
   }
 
@@ -307,7 +345,14 @@
   // player they are being hunted.
   function tickDemon(demon, delta, ctx) {
     const cfg = settings(ctx.config);
-    const context = { ...ctx, config: cfg, emit: ctx.emit || (() => {}), setHunted: ctx.setHunted || (() => {}), openDoor: ctx.openDoor || (() => {}) };
+    const context = {
+      ...ctx,
+      config: cfg,
+      emit: ctx.emit || (() => {}),
+      setHunted: ctx.setHunted || (() => {}),
+      openDoor: ctx.openDoor || (() => {}),
+      openDoorAhead: ctx.openDoorAhead || (() => {}),
+    };
     let next = demon.awareness ? demon : { ...demon, awareness: ctx.enemy.createAwareness() };
     next = updateAwareness(next, delta, context);
     next = updateHunt(next, context);
@@ -359,6 +404,6 @@
   return {
     DEFAULTS, PATROL_Z,
     caughtBy, chooseDemonSpawn, choosePatrol, createDemon, describeDemon, isInStairwell,
-    nearestFloor, planRoute, tickDemon,
+    nearestFloor, planRoute, selectBlockingDoor, tickDemon,
   };
 });

@@ -42,30 +42,59 @@
 
   // The mover for anything following a route: demons and hiders. It takes the direct step, then the
   // two perpendicular ones, so a body catching a door frame slips past it instead of grinding.
-  function stepToward(space, body, from, target, { speed = 0, delta = 0, arriveRadius = DEFAULT_ARRIVE_RADIUS, guided = false } = {}) {
+  function stepToward(space, body, from, target, {
+    speed = 0, delta = 0, arriveRadius = DEFAULT_ARRIVE_RADIUS, guided = false, avoidance = null,
+  } = {}) {
     const dx = target.x - from.x;
     const dy = target.y - from.y;
     const dz = target.z - from.z;
     const distance = Math.hypot(dx, dy, dz);
     if (distance < arriveRadius || distance === 0) {
-      return { x: target.x, y: target.y, z: target.z, moved: false, arrived: true, blocked: false, dirX: 0, dirY: 0, dirZ: 0 };
+      return { x: target.x, y: target.y, z: target.z, moved: false, arrived: true, blocked: false, avoidance: null, dirX: 0, dirY: 0, dirZ: 0 };
     }
     const dirX = dx / distance; const dirY = dy / distance; const dirZ = dz / distance;
     const amount = Math.min(distance, speed * delta);
     const facing = { dirX, dirY, dirZ, arrived: false };
-    if (!amount) return { x: from.x, y: from.y, z: from.z, moved: false, blocked: false, ...facing };
+    if (!amount) return { x: from.x, y: from.y, z: from.z, moved: false, blocked: false, avoidance, ...facing };
     // Stair flights and the elevator carry a body along a path the walk surfaces cannot describe, so
     // a guided waypoint is followed literally — including its vertical component.
     if (guided) {
-      return { x: from.x + dirX * amount, y: from.y + dirY * amount, z: from.z + dirZ * amount, moved: true, blocked: false, ...facing };
+      return { x: from.x + dirX * amount, y: from.y + dirY * amount, z: from.z + dirZ * amount, moved: true, blocked: false, avoidance: null, ...facing };
     }
     const direct = attemptStep(space, body, from, from.x + dirX * amount, from.z + dirZ * amount);
-    if (direct) return { ...direct, moved: true, blocked: false, ...facing };
-    for (const side of [-1, 1]) {
-      const slid = attemptStep(space, body, from, from.x + dirZ * side * amount, from.z - dirX * side * amount);
-      if (slid) return { ...slid, moved: true, blocked: false, ...facing };
+    if (direct) return { ...direct, moved: true, blocked: false, avoidance: null, ...facing };
+
+    // Keep the same world-space tangent while following an obstacle. Recalculating a perpendicular
+    // from the target every tick makes the tangent reverse as soon as the body passes the target's
+    // centreline, which is the classic "running into the wall" oscillation.
+    const tryAvoidance = (direction) => {
+      if (!direction || !Number.isFinite(direction.x) || !Number.isFinite(direction.z)) return null;
+      const length = Math.hypot(direction.x, direction.z);
+      if (length < 0.01) return null;
+      const avoidX = direction.x / length; const avoidZ = direction.z / length;
+      const position = attemptStep(space, body, from, from.x + avoidX * amount, from.z + avoidZ * amount);
+      return position ? {
+        ...position,
+        moved: true,
+        blocked: false,
+        avoidance: { x: avoidX, z: avoidZ },
+        dirX: avoidX,
+        dirY: 0,
+        dirZ: avoidZ,
+        arrived: false,
+      } : null;
+    };
+    const continuing = tryAvoidance(avoidance);
+    if (continuing) return continuing;
+    if (avoidance) {
+      const reversed = tryAvoidance({ x: -avoidance.x, z: -avoidance.z });
+      if (reversed) return reversed;
     }
-    return { x: from.x, y: from.y, z: from.z, moved: false, blocked: true, ...facing };
+    for (const side of [-1, 1]) {
+      const slid = tryAvoidance({ x: dirZ * side, z: -dirX * side });
+      if (slid) return slid;
+    }
+    return { x: from.x, y: from.y, z: from.z, moved: false, blocked: true, avoidance: null, ...facing };
   }
 
   return { stepAxes, stepToward, DEFAULT_ARRIVE_RADIUS };
