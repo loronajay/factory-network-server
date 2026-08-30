@@ -48,10 +48,21 @@
     return { entrances, landings, flights };
   }
 
-  function createDoorFrameLayout({ x, z, width = 1.45, height = 2.12 } = {}) {
+  // `axis` is the axis the opening runs along: 'z' for a wall of constant X (a hotel corridor), 'x'
+  // for a wall of constant Z. It used to be 'z' unconditionally, because a hotel's doors are all in
+  // corridor walls — which put both jambs in front of and behind an X-axis opening instead of either
+  // side of it, and left a pillar standing in the middle of the doorway.
+  function createDoorFrameLayout({ x, z, width = 1.45, height = 2.12, axis = 'z' } = {}) {
     const trimDepth = 0.12;
     const trimWidth = 0.16;
     const jambOffset = width / 2 + trimDepth / 2;
+    if (axis === 'x') {
+      return [
+        { kind: 'jamb', x: x - jambOffset, y: height / 2, z, w: trimDepth, h: height, d: trimWidth },
+        { kind: 'jamb', x: x + jambOffset, y: height / 2, z, w: trimDepth, h: height, d: trimWidth },
+        { kind: 'header', x, y: height + trimDepth / 2, z, w: width + trimDepth * 2, h: trimDepth, d: trimWidth },
+      ];
+    }
     return [
       { kind: 'jamb', x, y: height / 2, z: z - jambOffset, w: trimWidth, h: height, d: trimDepth },
       { kind: 'jamb', x, y: height / 2, z: z + jambOffset, w: trimWidth, h: height, d: trimDepth },

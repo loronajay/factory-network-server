@@ -1,9 +1,15 @@
 (function attachHotelPlan(root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.HotelPlan = api;
-})(typeof window !== 'undefined' ? window : globalThis, function createHotelPlanApi() {
+})(typeof window !== 'undefined' ? window : globalThis, function createHotelPlanApi(root) {
   'use strict';
+
+  // The generic plan geometry now lives in `collision-logic.js`, because a mall cannot reasonably
+  // ask a hotel where its own floor is. It is re-exported here so every `plan.resolveColliders(...)`
+  // call site — the browser's, the tests', and the server's match engine — is unchanged.
+  const geometry = typeof require === 'function' ? require('./collision-logic.js') : root.HotelCollision;
+  const { boxBounds, hingedBounds, resolveColliders, rotateY, slidingBounds, walkHeightAt } = geometry;
 
   // The building, as data.
   //
@@ -19,91 +25,6 @@
   const HALF_TURN = Math.PI / 2;
 
   const clean = (value) => (Math.abs(value) < 1e-12 ? 0 : Number(value.toFixed(9)));
-
-  // A point in a group's local frame, rotated into world space. THREE's Y rotation is the reference
-  // because the renderer has to land in the same place this does.
-  function rotateY(x, z, angle) {
-    const cosine = Math.cos(angle);
-    const sine = Math.sin(angle);
-    return { x: x * cosine + z * sine, z: -x * sine + z * cosine };
-  }
-
-  // Axis-aligned bounds of a box that may be turned about Y. The footprint grows as it rotates,
-  // which is close enough for a body that is itself a circle.
-  function boxBounds({ x = 0, y = 0, z = 0, w, h, d, rotationY = 0 }) {
-    const cosine = Math.abs(Math.cos(rotationY));
-    const sine = Math.abs(Math.sin(rotationY));
-    const halfX = (cosine * w + sine * d) / 2;
-    const halfZ = (sine * w + cosine * d) / 2;
-    return {
-      minX: clean(x - halfX), maxX: clean(x + halfX),
-      minY: clean(y - h / 2), maxY: clean(y + h / 2),
-      minZ: clean(z - halfZ), maxZ: clean(z + halfZ),
-    };
-  }
-
-  // A door swings about a hinge that is not its own centre, so the centre has to be carried round
-  // the arc before the bounds are taken.
-  function hingedBounds(door, angle = 0) {
-    const offset = rotateY(door.localX, door.localZ, angle);
-    return boxBounds({
-      x: door.hingeX + offset.x, y: door.y, z: door.hingeZ + offset.z,
-      w: door.w, h: door.h, d: door.d, rotationY: angle,
-    });
-  }
-
-  // Elevator doors slide apart instead of swinging. `amount` is 0 shut, 1 fully open.
-  function slidingBounds(door, amount = 0) {
-    const travel = 0.46 + (1.72 - 0.46) * amount;
-    return boxBounds({ x: door.centerX + door.direction * travel, y: door.y, z: door.z, w: door.w, h: door.h, d: door.d });
-  }
-
-  function walkHeightAt(surfaces, x, z, currentFeetY, groundSnap, dynamic = {}) {
-    let best = null;
-    let bestPriority = -Infinity;
-    let bestDiff = Infinity;
-    for (const surface of surfaces) {
-      if (x < surface.minX || x > surface.maxX || z < surface.minZ || z > surface.maxZ) continue;
-      let y;
-      if (surface.kind === 'ramp') {
-        const span = surface.endZ - surface.startZ;
-        const t = span === 0 ? 0 : Math.max(0, Math.min(1, (z - surface.startZ) / span));
-        y = surface.startY + (surface.endY - surface.startY) * t;
-      } else if (surface.kind === 'dynamic') {
-        const height = dynamic[surface.id];
-        if (typeof height !== 'number') continue;
-        y = height;
-      } else {
-        y = surface.y;
-      }
-      const diff = Math.abs(y - currentFeetY);
-      const priority = surface.priority || 0;
-      if (diff <= groundSnap && (priority > bestPriority || (priority === bestPriority && diff < bestDiff))) {
-        best = y;
-        bestPriority = priority;
-        bestDiff = diff;
-      }
-    }
-    return best;
-  }
-
-  // The collision list for one instant. `openings` maps a door id to its swing angle (room doors and
-  // secret panels) or its open amount (elevator doors); anything absent is treated as shut.
-  function resolveColliders(plan, openings = {}) {
-    const resolved = plan.colliders.slice();
-    for (const door of plan.swingDoors) {
-      const angle = openings[door.id] || 0;
-      // A panel folded flat into the wall has stopped being an obstacle.
-      if (door.hideWhenOpen && Math.abs(angle) >= 1.25) continue;
-      resolved.push(hingedBounds(door, angle));
-    }
-    for (const door of plan.slidingDoors) {
-      const amount = openings[door.id] || 0;
-      if (amount >= 0.62) continue;
-      resolved.push(slidingBounds(door, amount));
-    }
-    return resolved;
-  }
 
   function createHotelPlan({ config, floorDefs, layout, floorY, keyIdForFloor, keyLabelForFloor }) {
     const boxes = [];
@@ -513,11 +434,61 @@
       }
     }
 
+    // The corridor spine, as a graph. One node per hall stop per floor, linked to its neighbours
+    // along Z, and one vertical connector: the stairwell every demon uses and no elevator.
+    function createNavigation(shell) {
+      const SPINE_Z = [-52, -34, -18, 0, 18, 34, 49];
+      const nodes = [];
+      const edges = [];
+      for (const def of floorDefs) {
+        let previous = null;
+        for (const z of SPINE_Z) {
+          const id = `hall-${def.id}-${z}`;
+          nodes.push({ id, floor: def.id, x: 0, z });
+          if (previous) edges.push([previous, id]);
+          previous = id;
+        }
+      }
+      const stairLayout = layout.createStairLayout({ floorCount: floorDefs.length, floorHeight: config.floorHeight });
+      return {
+        nodes,
+        edges,
+        connectors: [{
+          id: 'stairwell',
+          kind: 'stair',
+          floors: floorDefs.map((def) => def.id),
+          // The hall point a demon walks to before it enters the stair door. This was `(0, 42.8)`
+          // hard-coded inside `enemy-logic.createStairRoute`.
+          approach: { x: 0, z: 42.8 },
+          layout: stairLayout,
+          shell,
+        }],
+        // Where a round may open a demon. Kept off the spine's exact stops so three demons in a
+        // two-floor building still read as three separate bodies.
+        spawnNodes: floorDefs.flatMap((def) => [-52, -28, 0, 28, 49].map((z) => ({ floor: def.id, x: 0, z }))),
+        minSpawnSeparation: 24,
+      };
+    }
+
     // --- assembly -------------------------------------------------------------------------------
 
     const shell = layout.createStairwellShellLayout();
     for (const def of floorDefs) buildFloor(def, shell);
     buildStairwell(shell);
+
+    // How a demon gets around this building.
+    //
+    // Where a demon may walk used to be spelled as constants inside `demon-logic.js` — a corridor
+    // spine at x=0, a list of patrol Z values, and a dogleg that stepped out to |x|=3.75 whenever a
+    // target sat off the spine. Every one of those numbers is *this hotel's floorplan*, so a second
+    // building could not be navigated at all without a per-map branch in the AI.
+    //
+    // So circulation is part of the plan now, in the one shape both buildings can answer in: a
+    // waypoint graph per floor, plus the vertical connectors between floors. The hotel's graph is
+    // its corridor spine, which is why routing through it lands where the old dogleg did — a room
+    // off the hall is reached by walking the spine to the room's Z and stepping out. A building
+    // shaped like a ring rather than a corridor simply emits a ring.
+    const navigation = createNavigation(shell);
 
     // The elevator car is the one walkable surface whose height is state rather than geometry.
     surfaces.push({
@@ -541,9 +512,18 @@
       .map((entry) => ({ ...boxBounds(entry), id: entry.id || null, floor: entry.floor }));
 
     return {
+      // Where this building's lift is. It used to be five constants in `modules/game-config.js`
+      // read directly by the fixtures, the tick, the renderer and the elevator module — which is
+      // fine while there is one building and wrong the moment there are two, because a mall's lift
+      // is not in a hotel's lobby. The plan owns its own shaft now.
+      elevator: {
+        centerX: config.elevatorCenterX, centerZ: config.elevatorCenterZ, frontZ: config.elevatorFrontZ,
+        halfWidth: config.elevatorHalfWidth, halfDepth: config.elevatorHalfDepth,
+        floors: floorDefs.map((def) => def.id),
+      },
       boxes, surfaces, colliders, swingDoors, slidingDoors,
       roomDoors, secretPanels, secretTunnels, roomCenters, furnishings, hallDoors,
-      signs, doorFrames, wallLamps, lights, fixtures, stairs, spawns,
+      signs, doorFrames, wallLamps, lights, fixtures, stairs, spawns, navigation,
     };
   }
 

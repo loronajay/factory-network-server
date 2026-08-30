@@ -31,6 +31,9 @@
     eyeHeight: 1.62,
     crouchEyeHeight: 1.02,
     floorHeight: 4.6,
+    // How tall the building is. The hotel's four was assumed in three separate places before maps
+    // were a registry; it is a map's number now and every one of them reads it from here.
+    floorCount: 4,
     elevatorCenterX: 2.5,
     elevatorCenterZ: 57.45,
     elevatorFrontZ: 55.88,
@@ -64,6 +67,11 @@
   // The elevator cabin is the exception and is kept in a separate short list. It moves continuously
   // while travelling, and folding it into the cached set would rebuild all 700 boxes every tick.
   function createPlanSpace({ plan, collision, hotel, config = {}, openings = {}, dynamicHeights = {} } = {}) {
+    // Bounds, hinges, collider resolution and walk heights are shared plan geometry and live in
+    // `collision-logic.js`. They used to be reached through the *hotel's* plan module, which is why
+    // every call site still passes one: a second map cannot sensibly ask the first where its own
+    // floor is. Both plan modules re-export them, so an older caller passing only `plan` still works.
+    const geometry = (collision && collision.resolveColliders) ? collision : plan;
     const groundSnap = config.groundSnap;
     const bodyHeight = config.bodyHeight;
     const playerRadius = config.playerRadius;
@@ -73,7 +81,7 @@
     let rebuilds = 0;
 
     function colliders() {
-      if (!cached) { cached = plan.resolveColliders(hotel, doorState); rebuilds += 1; }
+      if (!cached) { cached = geometry.resolveColliders(hotel, doorState); rebuilds += 1; }
       return cached;
     }
     function setOpening(id, value) {
@@ -90,7 +98,7 @@
       rebuilds: () => rebuilds,
       openings: () => ({ ...doorState }),
       setDynamicHeight(id, value) { dynamicHeights[id] = value; },
-      groundAt: (x, z, fromY) => plan.walkHeightAt(hotel.surfaces, x, z, fromY, groundSnap, dynamicHeights),
+      groundAt: (x, z, fromY) => geometry.walkHeightAt(hotel.surfaces, x, z, fromY, groundSnap, dynamicHeights),
       blocked(x, z, feetY, height = bodyHeight, radius = playerRadius) {
         const body = { x, z, feetY, bodyHeight: height, radius };
         return collision.collidesAt(colliders(), body) || (dynamic.length > 0 && collision.collidesAt(dynamic, body));
@@ -102,6 +110,26 @@
     };
   }
 
+  // The roster a simulation falls back on when nothing hands it one: the hotel's two, which is what
+  // every caller passed implicitly before maps were a registry. A map's roster comes from
+  // `map-catalog.js` and arrives as `config.demons`; this keeps a bare `createSimulation` — a unit
+  // test, a prototype — from needing a catalog to stand up a round.
+  const DEFAULT_DEMONS = Object.freeze([
+    Object.freeze({ id: 'bellhop', name: 'The Bellhop', hunts: true }),
+    Object.freeze({ id: 'housekeeper', name: 'The Housekeeper', hunts: false }),
+  ]);
+
+  // A roster is untrusted the moment it can come from a lobby setting, so it is bounded here: real
+  // entries only, a name that is a name, and a ceiling on how many things may hunt at once.
+  const MAX_DEMONS = 6;
+  function normalizeRoster(demons) {
+    const list = Array.isArray(demons) && demons.length ? demons : DEFAULT_DEMONS;
+    return list
+      .filter((entry) => entry && typeof entry === 'object' && entry.id)
+      .slice(0, MAX_DEMONS)
+      .map((entry) => ({ id: String(entry.id), name: String(entry.name || entry.id), hunts: !!entry.hunts }));
+  }
+
   function createSimulation({
     movement, round, stamina, flashlight, sanity, fixtures, demon: demonLogic, enemy, layout,
     space, plan: hotel, zones = [], config = {}, random = Math.random,
@@ -111,8 +139,16 @@
     const flashlightConfig = config.flashlight;
     const staminaConfig = config.stamina;
     const sanityConfig = config.sanity;
-    const fixtureConfig = { ...(config.fixtures || {}), floorHeight: player.floorHeight, elevatorCenterX: player.elevatorCenterX, elevatorCenterZ: player.elevatorCenterZ };
-    const demonConfig = { ...(config.demon || {}), floorHeight: player.floorHeight };
+    // Where the lift is belongs to the building, not to the player's tuning. A plan that predates
+    // the field falls back on the hotel's numbers so an older fixture still stands a round up.
+    const shaft = (hotel && hotel.elevator) || {
+      centerX: player.elevatorCenterX, centerZ: player.elevatorCenterZ, frontZ: player.elevatorFrontZ,
+    };
+    const fixtureConfig = { ...(config.fixtures || {}), floorHeight: player.floorHeight, elevatorCenterX: shaft.centerX, elevatorCenterZ: shaft.centerZ };
+    const demonConfig = { ...(config.demon || {}), floorHeight: player.floorHeight, floorCount: player.floorCount };
+    // The roster is the map's, and its length is the demon count. Two was the hotel's number, never
+    // a rule — a simulation given three walks, looks and catches with three.
+    const demonRoster = normalizeRoster(config.demons);
     const body = { height: player.bodyHeight, radius: player.playerRadius };
     let zoneList = zones;
 
@@ -123,8 +159,12 @@
     const doorCatalog = catalog.filter((item) => item.kind === 'door');
     const doorByRoom = new Map(doorCatalog.map((item) => [item.roomNumber, item]));
     const rooms = hotel ? hotel.roomCenters.map((room) => ({ roomNumber: room.roomNumber, floor: room.floor, x: room.x, z: room.z })) : [];
-    const stairLayout = layout ? layout.createStairLayout({ floorCount: 4, floorHeight: player.floorHeight }) : null;
-    const stairShell = layout ? layout.createStairwellShellLayout() : null;
+    // How a demon gets around this building comes off the building itself. It used to be read out of
+    // `layout.js`, which is one hotel's stairwell — a mall has an escalator pair and a service stair
+    // and neither is that. A plan with no navigation still ticks: its demons walk straight at what
+    // they want, which is the correct answer for a map that is a single open room.
+    const navigation = (hotel && hotel.navigation) || null;
+    const navigator = navigation && enemy ? enemy.createNavigator(navigation) : null;
 
     function setZones(next) { zoneList = next || []; }
 
@@ -134,15 +174,15 @@
     function floorOf(entry, lift) {
       let floor = 1;
       let best = Infinity;
-      for (let id = 1; id <= 4; id += 1) {
+      for (let id = 1; id <= player.floorCount; id += 1) {
         const diff = Math.abs(entry.y - (id - 1) * player.floorHeight);
         if (diff < best) { best = diff; floor = id; }
       }
-      const inCabinXZ = Math.abs(entry.x - player.elevatorCenterX) < 1.12
-        && entry.z > player.elevatorFrontZ - 0.12 && entry.z < player.elevatorCenterZ + 1.46;
+      const inCabinXZ = Math.abs(entry.x - shaft.centerX) < 1.12
+        && entry.z > shaft.frontZ - 0.12 && entry.z < shaft.centerZ + 1.46;
       if (lift && inCabinXZ && lift.state === 'moving') return 0;
       if (best < 0.38) return floor;
-      if (stairShell && demonLogic && demonLogic.isInStairwell(entry, stairShell)) return 0;
+      if (navigation && demonLogic && demonLogic.isInStairwell(entry, { navigation })) return 0;
       return floor;
     }
 
@@ -169,18 +209,25 @@
       return { tick: 0, elapsed: 0, round: roundState, bodies, fixtures: fixtureState, demons, pickups: [], events: [] };
     }
 
-    // Two demons, off one factory, spawned apart. Only The Bellhop reads the sanity meter: two
-    // camper-hunters would converge on the same full bar and read as a swarm.
+    // The map's demons, off one factory, spawned apart: each one is placed clear of the demons
+    // already standing, so a roster of three opens as three separate threats rather than a pack.
+    // Separation is a distance rather than a floor each, because Cinder Mall carries three demons on
+    // two levels and a floor each has no answer there — see `chooseDemonSpawn`.
+    //
+    // Only one demon in a roster reads the sanity meter (`hunts`), and the catalog is where that is
+    // decided — two camper-hunters would converge on the same full bar and read as a swarm.
     function createDemons(bodies, roundState) {
-      if (!demonLogic || !enemy || !stairLayout) return [];
+      if (!demonLogic || !enemy) return [];
       const seeker = round.seekerOf(roundState);
       const anchor = bodies.find((entry) => seeker && entry.id === seeker.id) || bodies[0] || { x: 0, z: 0, floor: 1 };
-      const first = demonLogic.chooseDemonSpawn({ enemy, player: anchor, random, config: demonConfig });
-      const second = demonLogic.chooseDemonSpawn({ enemy, player: anchor, random, excludedFloors: [first.floor], config: demonConfig });
-      return [
-        demonLogic.createDemon({ id: 'bellhop', name: 'The Bellhop', spawn: first, hunts: true }),
-        demonLogic.createDemon({ id: 'housekeeper', name: 'The Housekeeper', spawn: second, hunts: false }),
-      ];
+      const taken = [];
+      return demonRoster.map((entry) => {
+        const spawn = demonLogic.chooseDemonSpawn({
+          enemy, player: anchor, random, taken: taken.slice(), navigation, config: demonConfig,
+        });
+        taken.push(spawn);
+        return demonLogic.createDemon({ id: entry.id, name: entry.name, spawn, hunts: !!entry.hunts });
+      });
     }
 
     function participantOf(state, id) {
@@ -223,8 +270,8 @@
       // A body standing in the cabin rides it. The lift is authoritative over its passengers, which
       // is the only way two players in one elevator can agree about where they are.
       if (lift && lift.state === 'moving') {
-        const inCabin = Math.abs(position.x - player.elevatorCenterX) < 1.12
-          && position.z > player.elevatorFrontZ - 0.12 && position.z < player.elevatorCenterZ + 1.46;
+        const inCabin = Math.abs(position.x - shaft.centerX) < 1.12
+          && position.z > shaft.frontZ - 0.12 && position.z < shaft.centerZ + 1.46;
         if (inCabin && Math.abs(position.y - lift.y) < 0.9) position = { ...position, y: clean(lift.y) };
       }
       const lit = flashlight.tickFlashlight(flashlight.setFlashlight(entry.flashlight, command.light), delta, flashlightConfig);
@@ -309,7 +356,7 @@
       const hunted = new Set();
       const ctx = {
         space, movement, enemy, sanity, sanityConfig, random,
-        candidates, huntCandidates, rooms, stairLayout, stairShell, config: demonConfig,
+        candidates, huntCandidates, rooms, navigation, navigator, config: demonConfig,
         isRoomLocked: (roomNumber) => {
           const item = doorByRoom.get(roomNumber);
           return !item || !doors || !doors.doors[item.id] ? true : !!doors.doors[item.id].locked;
@@ -468,5 +515,5 @@
     return { createState, tick, snapshot, resolveDemonCatch, setZones, bodyOf, catalog, PLAYER: player };
   }
 
-  return { createPlanSpace, createSimulation, readInput, NO_INPUT, PICKUP_RADIUS, PLAYER_DEFAULTS };
+  return { createPlanSpace, createSimulation, normalizeRoster, readInput, DEFAULT_DEMONS, MAX_DEMONS, NO_INPUT, PICKUP_RADIUS, PLAYER_DEFAULTS };
 });

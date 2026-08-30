@@ -53,6 +53,12 @@ export function sanitizeLobbySettings(settings = {}) {
     // sameLobbySettings gets that for free from a primitive field. A game that
     // never sends it stays false on both sides and is unaffected.
     ranked: settings.ranked === true,
+    // Which map a lobby is playing, for games that have more than one. It belongs in lobby settings
+    // rather than in a game's own message for the same reason `ranked` does: matchmaking compares
+    // settings, and two players standing in different buildings must never be paired. A client that
+    // builds its map at boot cannot be handed a round happening somewhere else. Games with a single
+    // map never send it and stay "" on both sides, so nothing changes for them.
+    mapId: typeof settings.mapId === "string" && settings.mapId.trim() ? settings.mapId.trim().slice(0, 32) : "",
     protocolVersion: Number.isFinite(Number(settings.protocolVersion)) ? Math.max(1, Math.floor(Number(settings.protocolVersion))) : 1,
     // Mini Hoops' four competitive settings must survive the generic lobby
     // boundary. Its game engine performs the catalog validation when a match is

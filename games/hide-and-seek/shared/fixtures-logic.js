@@ -95,7 +95,11 @@
     }
     // The cabin buttons ride the car, so their height is state rather than layout. They carry a
     // local Y and are resolved against the car whenever a reach is tested.
-    for (let floor = 1; floor <= 4; floor += 1) {
+    //
+    // One button per floor the lift actually serves — this was `1..4`, which is a hotel with four
+    // storeys, and would have hung two dead buttons on the wall of a two-level mall.
+    const liftFloors = (hotel && hotel.elevator && hotel.elevator.floors) || cfg.elevatorFloors || [1, 2, 3, 4];
+    for (const floor of liftFloors) {
       items.push({
         id: 'elevator-button-' + floor, kind: FIXTURE_KINDS.ELEVATOR_BUTTON, floor: null, callFloor: floor,
         x: cfg.elevatorCenterX, localY: 0.72 + (floor - 1) * 0.35, z: cfg.elevatorCenterZ + 0.25,

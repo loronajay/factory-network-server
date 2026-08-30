@@ -55,7 +55,154 @@
     return { state: ENEMY_STATES.ROAM, lastSeen: null, searchRemaining: 0, targetId: null, pursuitRemaining: 0, clueActive: false };
   }
 
-  function createStairRoute({ fromFloor, toFloor, floorHeight, stairLayout }) {
+  // --- navigating a building --------------------------------------------------------------------
+
+  // A demon's route across one floor, over the waypoint graph its map published.
+  //
+  // The hotel used to be navigated by arithmetic: walk to x=0, run along Z, and step out to |x|=3.75
+  // if the target sat off the spine. That is a corridor's floorplan written as code, and it is why
+  // the AI could not be pointed at a second building. The graph says the same thing as data — the
+  // hotel emits its spine, a mall emits the ring around its atrium — and the router below is the
+  // only thing that has to understand either.
+  //
+  // An empty graph routes to nothing on purpose. A single open room genuinely has no waypoints, and
+  // "walk straight at it" is the correct answer there rather than a thrown error inside a tick.
+  function createNavigator(navigation) {
+    const nodes = (navigation && navigation.nodes) || [];
+    const edges = (navigation && navigation.edges) || [];
+    const connectors = (navigation && navigation.connectors) || [];
+
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const neighbours = new Map(nodes.map((node) => [node.id, []]));
+    for (const [a, b] of edges) {
+      if (!byId.has(a) || !byId.has(b)) continue;
+      neighbours.get(a).push(b);
+      neighbours.get(b).push(a);
+    }
+
+    const cost = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+
+    function nearestNode(point, floor) {
+      let best = null;
+      let bestDistance = Infinity;
+      for (const node of nodes) {
+        if (node.floor !== floor) continue;
+        const distance = cost(node, point);
+        if (distance < bestDistance) { best = node; bestDistance = distance; }
+      }
+      return best;
+    }
+
+    // Dijkstra. The graphs are a few dozen nodes per floor, so the simple version is the right one —
+    // a priority queue here would be more code than the search it accelerates.
+    function shortestPath(startId, goalId) {
+      if (startId === goalId) return [startId];
+      const distances = new Map([[startId, 0]]);
+      const previous = new Map();
+      const unvisited = new Set(nodes.filter((node) => node.floor === byId.get(startId).floor).map((node) => node.id));
+      while (unvisited.size) {
+        let currentId = null;
+        let currentDistance = Infinity;
+        for (const id of unvisited) {
+          const distance = distances.has(id) ? distances.get(id) : Infinity;
+          if (distance < currentDistance) { currentId = id; currentDistance = distance; }
+        }
+        if (currentId === null) break;
+        if (currentId === goalId) break;
+        unvisited.delete(currentId);
+        for (const nextId of neighbours.get(currentId) || []) {
+          if (!unvisited.has(nextId)) continue;
+          const candidate = currentDistance + cost(byId.get(currentId), byId.get(nextId));
+          if (candidate < (distances.has(nextId) ? distances.get(nextId) : Infinity)) {
+            distances.set(nextId, candidate);
+            previous.set(nextId, currentId);
+          }
+        }
+      }
+      if (!distances.has(goalId)) return null;
+      const path = [goalId];
+      let cursor = goalId;
+      while (previous.has(cursor)) { cursor = previous.get(cursor); path.unshift(cursor); }
+      return path;
+    }
+
+    // The waypoints between two points on one floor, target excluded — the caller appends the target
+    // itself, because only it knows whether the last step is a room, a landing or a body.
+    function walkRoute(from, to, floor = from.floor) {
+      const start = nearestNode(from, floor);
+      const goal = nearestNode(to, floor);
+      if (!start || !goal) return [];
+      const path = shortestPath(start.id, goal.id);
+      if (!path) return [];
+      const points = path.map((id) => byId.get(id));
+      // Do not send a demon backwards to a waypoint it has already passed: if the first node is
+      // further from the goal than the demon already is, it is behind it.
+      if (points.length && cost(points[0], to) > cost(from, to)) points.shift();
+      return points.map((node) => ({ x: node.x, z: node.z, floor: node.floor }));
+    }
+
+    // Which stairs to take. A building may have several — a mall has an escalator pair and a service
+    // stair — so the nearest one that actually serves both floors wins.
+    function connectorBetween(fromFloor, toFloor, from) {
+      let best = null;
+      let bestDistance = Infinity;
+      for (const connector of connectors) {
+        const floors = connector.floors || [];
+        if (!floors.includes(fromFloor) || !floors.includes(toFloor)) continue;
+        const approach = connector.approach || { x: 0, z: 0 };
+        const distance = from ? Math.hypot(approach.x - from.x, approach.z - from.z) : 0;
+        if (distance < bestDistance) { best = connector; bestDistance = distance; }
+      }
+      return best;
+    }
+
+    // The connector whose shell a point is standing inside, if any. This is what makes "the target is
+    // in the stairwell" a question a mall can answer too.
+    function connectorContaining(point) {
+      for (const connector of connectors) {
+        const bounds = connector.shell && connector.shell.bounds;
+        if (!bounds) continue;
+        if (point.x >= bounds.xWest - 0.2 && point.x <= bounds.xEast + 0.2
+          && point.z >= bounds.zMin - 0.2 && point.z <= bounds.zMax + 0.2) return connector;
+      }
+      return null;
+    }
+
+    // A whole route from a body to a target, connectors included: walk to the stairs, climb them,
+    // walk to the target. Every routed body in the game goes through this — the demon, the offline
+    // seeker and the offline hiders — because they all move through one building and there is no
+    // version of "how do I get there" that should differ between them.
+    function planFloorRoute({ from, target, fromFloor, toFloor, floorHeight = 4.6 }) {
+      const floorY = (floor) => (floor - 1) * floorHeight;
+      const route = [];
+      let cursor = { x: from.x, z: from.z, floor: fromFloor };
+      if (fromFloor !== toFloor) {
+        const connector = connectorBetween(fromFloor, toFloor, from);
+        if (connector) {
+          for (const step of walkRoute(cursor, connector.approach, fromFloor)) {
+            route.push({ x: step.x, y: floorY(fromFloor), z: step.z, floor: fromFloor, guided: false });
+          }
+          route.push(...createStairRoute({
+            fromFloor, toFloor, floorHeight, stairLayout: connector.layout, approach: connector.approach,
+          }));
+          cursor = { x: connector.approach.x, z: connector.approach.z, floor: toFloor };
+        } else {
+          cursor = { x: from.x, z: from.z, floor: toFloor };
+        }
+      }
+      for (const step of walkRoute(cursor, target, toFloor)) {
+        route.push({ x: step.x, y: floorY(toFloor), z: step.z, floor: toFloor, guided: false });
+      }
+      route.push({ x: target.x, y: floorY(toFloor), z: target.z, floor: toFloor, guided: false });
+      return route;
+    }
+
+    return { connectorBetween, connectorContaining, nearestNode, planFloorRoute, walkRoute };
+  }
+
+  // `approach` is the hall point outside the stair door. It was `(0, 42.8)` — the hotel's corridor,
+  // written into the router — so a second building's stairs could not be walked to at all.
+  function createStairRoute({ fromFloor, toFloor, floorHeight, stairLayout, approach = { x: 0, z: 42.8 } }) {
     if (fromFloor === toFloor) return [];
     const point = (x, y, z, floor, guided = true, stair = true) => {
       const result = { x, y, z, floor, guided };
@@ -63,7 +210,7 @@
       return result;
     };
     const floorY = (floor) => (floor - 1) * floorHeight;
-    const route = [point(0, floorY(fromFloor), 42.8, fromFloor, false, false)];
+    const route = [point(approach.x, floorY(fromFloor), approach.z, fromFloor, false, false)];
     const entranceFor = (floor) => stairLayout.entrances.find((entry) => entry.floor === floor);
     const addEntrance = (floor) => {
       const entrance = entranceFor(floor);
@@ -75,8 +222,12 @@
     while (floor !== toFloor) {
       const goingUp = toFloor > floor;
       const transition = goingUp ? floor : floor - 1;
-      const west = stairLayout.flights.find((flight) => flight.transition === transition && flight.lane === 'west');
-      const east = stairLayout.flights.find((flight) => flight.transition === transition && flight.lane === 'east');
+      const lanes = stairLayout.flights.filter((flight) => flight.transition === transition);
+      // A switchback has two lanes with a landing between them; a straight run — an escalator, a
+      // single flight — has one, and is the same walk with the middle two points collapsed. This was
+      // written assuming the hotel's switchback, so a one-flight connector crashed the router.
+      const west = lanes.find((flight) => flight.lane === 'west') || lanes[0];
+      const east = lanes.find((flight) => flight.lane === 'east') || west;
       if (goingUp) {
         route.push(
           point(west.startX, west.startY, west.startZ, floor),
@@ -235,5 +386,5 @@
     return next;
   }
 
-  return { ENEMY_STATES, aggregateEnemyState, canDetectPlayer, chooseRoamTarget, chooseSpawn, createAwareness, createStairPursuitRoute, createStairRoute, planarDistance, prepareHuntDoor, prepareRoamDoor, selectDetectedTarget, updateAwareness };
+  return { ENEMY_STATES, aggregateEnemyState, canDetectPlayer, chooseRoamTarget, chooseSpawn, createAwareness, createNavigator, createStairPursuitRoute, createStairRoute, planarDistance, prepareHuntDoor, prepareRoamDoor, selectDetectedTarget, updateAwareness };
 });

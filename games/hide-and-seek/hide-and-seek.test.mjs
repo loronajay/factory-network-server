@@ -236,3 +236,64 @@ test("a reconnecting guest walks back into the body that was left standing", () 
   assert.equal(applyHideAndSeekInput(match, "socket-c", walk()), true);
   assert.equal(hideAndSeekLobbyGame.broadcastAfterReconnect({ roomCode: "HOTEL", hideAndSeekMatch: match }), true);
 });
+
+test("the map a round is in comes from the lobby, is named in every snapshot, and is never a client's word for it", () => {
+  const room = lobby();
+  const match = createHideAndSeekMatchState(room, Date.now());
+  const snapshot = serializeHideAndSeekMatch(match);
+  // A lobby that says nothing plays the default building, and the snapshot names it — a client that
+  // built a different one has to be able to refuse the round rather than walk through walls.
+  assert.equal(match.mapId, "grand-hotel");
+  assert.equal(snapshot.mapId, "grand-hotel");
+
+  // A map id is a lobby setting, so it is untrusted text. Anything that is not a buildable map falls
+  // back to the default rather than standing a round up in a building with no geometry.
+  for (const mapId of ["atlantis", "", null, { id: "grand-hotel" }]) {
+    assert.equal(createHideAndSeekMatchState({ ...room, settings: { mapId } }, Date.now()).mapId, "grand-hotel");
+  }
+
+  // A second building the authority can actually run. The lobby names it and the snapshot carries it
+  // through, which is what lets a client compare the map it built against the one it is being sent.
+  const mall = createHideAndSeekMatchState({ ...room, settings: { mapId: "cinder-mall" } }, Date.now());
+  assert.equal(mall.mapId, "cinder-mall");
+  assert.equal(serializeHideAndSeekMatch(mall).mapId, "cinder-mall");
+});
+
+test("a second map is a second building, not a re-skin of the first", () => {
+  const room = lobby();
+  const hotel = createHideAndSeekMatchState(room, Date.now());
+  const mall = createHideAndSeekMatchState({ ...room, settings: { mapId: "cinder-mall" } }, Date.now());
+
+  // Three demons in the mall against the hotel's two, and the mall's own staff by name.
+  assert.deepEqual(mall.state.demons.map((entry) => entry.id), ["greeter", "custodian", "nightwatch"]);
+  assert.equal(hotel.state.demons.length, 2);
+
+  // The bodies stand somewhere else entirely, because it is a different building.
+  const away = mall.state.bodies.some((body) => hotel.state.bodies.every(
+    (other) => Math.hypot(other.x - body.x, other.z - body.z) > 1,
+  ));
+  assert.equal(away, true, "the mall's spawns must not be the hotel's spawns");
+
+  // And it ticks: sixty seconds of the authority in a building nobody has walked yet.
+  let state = mall.state;
+  for (let tick = 0; tick < 60 * 60; tick += 1) state = mall.engine.tick(state, 1 / 60, {});
+  for (const body of state.bodies) {
+    assert.ok(Number.isFinite(body.x) && Number.isFinite(body.z), "a body left the number line");
+    assert.ok(body.floor >= 1 && body.floor <= 2, `a body is on floor ${body.floor} of a two-level mall`);
+  }
+});
+
+test("the demons in an authoritative round are the map's roster, not a hard-coded pair", () => {
+  const match = createHideAndSeekMatchState(lobby(), Date.now());
+  const { demons } = serializeHideAndSeekMatch(match);
+  assert.deepEqual(demons.map((entry) => entry.id), ["bellhop", "housekeeper"]);
+  // Whatever the roster's length, they open apart from each other. Not on floors of their own — the
+  // mall carries three demons on two levels, so counting storeys is arithmetic with no answer.
+  for (let i = 0; i < match.state.demons.length; i += 1) {
+    for (let j = i + 1; j < match.state.demons.length; j += 1) {
+      const a = match.state.demons[i];
+      const b = match.state.demons[j];
+      assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 12 || Math.abs(a.y - b.y) > 1, "two demons opened together");
+    }
+  }
+});

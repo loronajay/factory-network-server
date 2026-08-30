@@ -11,7 +11,7 @@
 import {
   CONFIG, FLOOR_DEFS, FLASHLIGHT_CONFIG, ROUND_CONFIG, SANITY_CONFIG, STAMINA_CONFIG,
   floorY, keyIdForFloor, keyLabelForFloor,
-  collision, demon, enemy, fixtures, layout, movement, plan, round, sanity, sim, stamina, flashlight,
+  collision, demon, enemy, fixtures, layout, maps, movement, plan, round, sanity, sim, stamina, flashlight,
 } from "../shared/index.mjs";
 
 export const HIDE_AND_SEEK_GAME_ID = "hide-and-seek";
@@ -27,16 +27,27 @@ const STEP_SECONDS = 1 / HIDE_AND_SEEK_TICK_RATE;
 
 export const HIDE_AND_SEEK_LOBBY_LIMITS = Object.freeze({ minPlayers: 2, maxPlayers: 8 });
 
-// The hotel is identical in every match and the plan is immutable, so it is built once. Door state
-// is not in here — that lives per match, in the space.
-let cachedHotel = null;
-export function hotelPlan() {
-  if (!cachedHotel) {
-    cachedHotel = plan.createHotelPlan({
+// A map's building is identical in every match and its plan is immutable, so each one is built once
+// and shared. Door state is not in here — that lives per match, in the space.
+//
+// Which building a match happens in comes from the lobby's settings, because a client builds its map
+// at boot and cannot be handed a different one: matchmaking keeps the two pools apart and the
+// snapshot names the map so a client can refuse a round it has no geometry for.
+const cachedPlans = new Map();
+export function hotelPlan(mapId = maps.DEFAULT_MAP_ID) {
+  const resolved = maps.playableMapId(mapId);
+  if (!cachedPlans.has(resolved)) {
+    cachedPlans.set(resolved, maps.resolveMapPlan(resolved, {
       config: CONFIG, floorDefs: FLOOR_DEFS, layout, floorY, keyIdForFloor, keyLabelForFloor,
-    });
+    }));
   }
-  return cachedHotel;
+  return cachedPlans.get(resolved);
+}
+
+// The map a lobby is playing. Untrusted — it arrives as a lobby setting a client sent — so it is
+// normalized to a map that actually has geometry before anything is built from it.
+export function hideAndSeekMapId(lobby) {
+  return maps.playableMapId(lobby?.settings?.mapId);
 }
 
 function sanityZones(hotel) {
@@ -107,7 +118,8 @@ function profileFor(lobby, clientId, index) {
 }
 
 export function createHideAndSeekMatchState(lobby, startAt) {
-  const hotel = hotelPlan();
+  const mapId = hideAndSeekMapId(lobby);
+  const hotel = hotelPlan(mapId);
   const memberIds = [...(lobby?.members || [])];
   const seed = clean(lobby?.seed, 32, "seed");
   const seekerId = chooseSeeker(memberIds, seed);
@@ -116,7 +128,10 @@ export function createHideAndSeekMatchState(lobby, startAt) {
     movement, round, stamina, flashlight, sanity, fixtures, demon, enemy, layout,
     space, plan: hotel, zones: sanityZones(hotel), random: seededRandom(seed),
     config: {
-      player: CONFIG,
+      // The map's demons, however many it has. Two was the hotel's number, not a rule — the roster
+      // is the catalog's answer and this tick spawns, walks and catches for all of them.
+      demons: maps.demonRosterFor(mapId),
+      player: { ...CONFIG, floorCount: maps.floorCountFor(mapId) },
       round: ROUND_CONFIG,
       stamina: STAMINA_CONFIG,
       sanity: SANITY_CONFIG,
@@ -129,6 +144,7 @@ export function createHideAndSeekMatchState(lobby, startAt) {
   return {
     gameId: HIDE_AND_SEEK_GAME_ID,
     protocolVersion: HIDE_AND_SEEK_PROTOCOL_VERSION,
+    mapId,
     roomCode: clean(lobby?.roomCode, 8),
     authorityMode: "server",
     phase: "scheduled",
@@ -216,6 +232,9 @@ export function serializeHideAndSeekMatch(match, serverNow = Date.now()) {
   return {
     gameId: match.gameId,
     protocolVersion: match.protocolVersion,
+    // The building this round is in. A client that built a different one must refuse the round
+    // rather than walk a body through walls it does not have.
+    mapId: match.mapId,
     roomCode: match.roomCode,
     authorityMode: match.authorityMode,
     phase: match.phase,

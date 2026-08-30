@@ -2,17 +2,19 @@
   "generator": "games/hide-and-seek/tools/mirror-sim.mjs",
   "files": {
     "modules/game-config.js": "b1658a09821494e670cf687ccd223db7abd07ccf949ec31356bc2661d332f91e",
-    "layout.js": "b1a286ba4b217564c83147bda375e65f480ec0a588f16fac8b330f48c50625c9",
-    "hotel-plan.js": "e95d6031e9d6203521eb68c3caa97c1a448ef880252316ab874e6e95631e4127",
-    "collision-logic.js": "5f0030019bbdb9482edb61567d87408e28cad8080f43ce1c80adb56ae571b25e",
+    "map-catalog.js": "16ed37c1aa63440833d68413051276fad9f853e94ce880e9d39ad4bf28dd12d7",
+    "layout.js": "b9d516d224f6f91f1af4848c34ecafe09dcaac62ead54a436326e3c9ebb232df",
+    "hotel-plan.js": "50f6e2fa2ed2481e21744c4cdc5fd48e6ea15231d379b6b64f2cdcb321bb02d6",
+    "mall-plan.js": "3830feee98a642264d328f3ca06aad1493248653b8eb640908e148692eacb047",
+    "collision-logic.js": "39ba8b4dcd8251e1c16d066476610bd173bbc6a3c69682593e2e863f1ea3f75c",
     "movement-logic.js": "1f53657f71badb3daf0dff0e7c71c657ed6ae2920d222b6fc680f93698bf1132",
     "round-logic.js": "ef39ca22b4e01be24540abaed9b0b79723ffec2487b885aa97ad3bbc9cdc05d3",
     "stamina-logic.js": "3363b78186b34453892763e8d8931ad9b403c02d3f5d7d3356ce350feabf645e",
     "sanity-logic.js": "9dcb207c58cb853a4d3370204361564dfd8c9b50639be16388d899075c82095a",
     "flashlight-logic.js": "30a8eccafa7914e752c04551eb17881e51266b873c396623ce217b1d9cd0c12b",
-    "enemy-logic.js": "8d1040c484796eb934262b055b7e3bb09bb4364674aa11e0e8f2f99d7ddb3ab0",
-    "fixtures-logic.js": "7a81060ea783b537edeb978009a214fef7af7dfca07603575eb201a9c99cafdb",
-    "demon-logic.js": "1ef356942f06c5ec5e6f7342d398e47e3df909ba4fcc9a849180cd15370ebc92",
-    "sim-logic.js": "0e19b43f8582ea9125eed327b485fcfbf5a4117936618fda5f4a5707335be6fb"
+    "enemy-logic.js": "481899fa1bc8629fb19a3514e5e5b9d3a7eff7c8e6208731a7ca262d62205ad8",
+    "fixtures-logic.js": "ed8bd5c8c1993aea1bfa9b0a20fce94a8f0f05fb4a8c38583d83c9fba94bc6e7",
+    "demon-logic.js": "d328f3a088bb852190232cee7bc492e4cf496e681f511703348bdb0e9ea4f656",
+    "sim-logic.js": "ace5db888f9e1e20766435e4fa7e4bd7b915b50f7cf7c161c8a34ec4d10ee6a9"
   }
 }

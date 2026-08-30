@@ -61,9 +61,38 @@
     return (floor - 1) * cfg.floorHeight;
   }
 
-  function isInStairwell(point, stairShell) {
-    const { xWest, xEast, zMin, zMax } = stairShell.bounds;
-    return point.x >= xWest - 0.2 && point.x <= xEast + 0.2 && point.z >= zMin - 0.2 && point.z <= zMax + 0.2;
+  // "Is this body on the stairs" — asked of the building rather than of one hotel's shell, because a
+  // mall's escalators and service stair are two separate volumes and neither is the hotel's.
+  //
+  // A raw shell is still accepted so a caller holding one keeps working; a context resolves through
+  // its navigation instead.
+  function isInStairwell(point, source) {
+    const shells = shellsOf(source);
+    for (const bounds of shells) {
+      if (point.x >= bounds.xWest - 0.2 && point.x <= bounds.xEast + 0.2
+        && point.z >= bounds.zMin - 0.2 && point.z <= bounds.zMax + 0.2) return true;
+    }
+    return false;
+  }
+
+  function shellsOf(source) {
+    if (!source) return [];
+    if (source.bounds) return [source.bounds];
+    const navigation = source.navigation || (source.stairShell ? null : source);
+    const connectors = (navigation && navigation.connectors) || [];
+    const bounds = connectors.map((connector) => connector.shell && connector.shell.bounds).filter(Boolean);
+    if (bounds.length) return bounds;
+    return source.stairShell && source.stairShell.bounds ? [source.stairShell.bounds] : [];
+  }
+
+  // One navigator per context, built once and cached on it. Rebuilding the graph's lookup tables
+  // sixty times a second for every demon would be the most expensive thing in the tick.
+  function navigatorOf(ctx) {
+    if (ctx.navigator) return ctx.navigator;
+    const navigation = ctx.navigation || (ctx.hotel && ctx.hotel.navigation) || null;
+    const navigator = ctx.enemy.createNavigator(navigation || { nodes: [], edges: [], connectors: [] });
+    ctx.navigator = navigator;
+    return navigator;
   }
 
   // `hunts` is what separates The Bellhop from The Housekeeper: only one demon reads the sanity
@@ -96,37 +125,51 @@
     return { x, y: floorYOf(floor, cfg), z, floor, guided };
   }
 
-  // Two shapes of route: into and along the stairwell (guided, because the walk surfaces cannot
-  // describe a flight), then out along the corridor spine to the target. The corridor dogleg keeps
-  // the demon out of the walls when its target is inside a room off the hall.
+  // Two shapes of route: into and along a vertical connector (guided, because the walk surfaces
+  // cannot describe a flight), then across the destination floor's waypoint graph to the target.
+  //
+  // The floor-crossing half used to be arithmetic against this hotel: walk to the corridor spine at
+  // x=0, then step out to |x|=3.75 if the target sat off it. That dogleg *is* a corridor's
+  // floorplan, and it is the reason the AI could not be pointed at a second building. The map's
+  // navigation graph says the same thing as data, so the hotel still reaches a room by walking the
+  // hall to its Z and stepping in, and a mall reaches a store by walking the ring round its atrium.
   function planRoute(demon, target, purpose, ctx) {
     const cfg = ctx.config;
+    const navigator = navigatorOf(ctx);
     const fromFloor = nearestFloor(demon.y, cfg);
     const toFloor = target.floor || nearestFloor(target.y, cfg);
-    let route = target.inStairwell
-      ? ctx.enemy.createStairPursuitRoute({
-        enemy: { x: demon.x, y: demon.y, z: demon.z, floor: fromFloor, inStairwell: isInStairwell(demon, ctx.stairShell) },
+
+    if (target.inStairwell) {
+      const connector = navigator.connectorContaining(target) || navigator.connectorBetween(fromFloor, toFloor, demon);
+      const route = connector ? ctx.enemy.createStairPursuitRoute({
+        enemy: { x: demon.x, y: demon.y, z: demon.z, floor: fromFloor, inStairwell: isInStairwell(demon, ctx) },
         target,
         floorHeight: cfg.floorHeight,
-        stairLayout: ctx.stairLayout,
-      })
-      : fromFloor === toFloor ? [] : ctx.enemy.createStairRoute({ fromFloor, toFloor, floorHeight: cfg.floorHeight, stairLayout: ctx.stairLayout });
-    if (!target.inStairwell) {
-      route = route.slice();
-      if (Math.abs(target.x) > 4.25) {
-        route.push(floorPoint(toFloor, 0, target.z, cfg), floorPoint(toFloor, Math.sign(target.x) * 3.75, target.z, cfg));
-      }
-      route.push({ x: target.x, y: floorYOf(toFloor, cfg), z: target.z, floor: toFloor, guided: false });
+        stairLayout: connector.layout,
+      }) : [];
+      return { ...demon, route, routePurpose: purpose };
     }
+
+    const route = navigator.planFloorRoute({
+      from: { x: demon.x, z: demon.z }, target, fromFloor, toFloor, floorHeight: cfg.floorHeight,
+    });
     return { ...demon, route, routePurpose: purpose };
   }
 
   function choosePatrol(demon, ctx) {
     const cfg = ctx.config;
     const random = ctx.random || Math.random;
+    // Where there is to walk is the building's answer. `PATROL_Z` is the hotel's corridor stops and
+    // is only the fallback for a plan that publishes no navigation — pointing a mall demon at a
+    // hotel's Z values sends it patrolling coordinates that are not in its building.
+    const nodes = ctx.navigation && ctx.navigation.nodes;
     const hallTargets = [];
-    for (let floor = 1; floor <= cfg.floorCount; floor += 1) {
-      for (const z of PATROL_Z) hallTargets.push(floorPoint(floor, z < -42 || z > 42 ? (random() - 0.5) * 8 : 0, z, cfg));
+    if (nodes && nodes.length) {
+      for (const node of nodes) hallTargets.push(floorPoint(node.floor, node.x, node.z, cfg));
+    } else {
+      for (let floor = 1; floor <= cfg.floorCount; floor += 1) {
+        for (const z of PATROL_Z) hallTargets.push(floorPoint(floor, z < -42 || z > 42 ? (random() - 0.5) * 8 : 0, z, cfg));
+      }
     }
     const roomTargets = ctx.rooms
       .filter((room) => !ctx.isRoomLocked(room.roomNumber))
@@ -169,11 +212,11 @@
       })) visible = tracked;
     }
     next.detectedTargetId = visible ? visible.id : null;
-    const seen = visible ? { ...visible, inStairwell: isInStairwell(visible, ctx.stairShell) } : null;
+    const seen = visible ? { ...visible, inStairwell: isInStairwell(visible, ctx) } : null;
     const remembered = !visible && next.awareness.targetId
       ? candidates.find((candidate) => candidate.id === next.awareness.targetId)
       : null;
-    const clue = remembered ? { ...remembered, inStairwell: isInStairwell(remembered, ctx.stairShell) } : null;
+    const clue = remembered ? { ...remembered, inStairwell: isInStairwell(remembered, ctx) } : null;
     const previousState = next.awareness.state;
     next.awareness = ctx.enemy.updateAwareness(next.awareness, {
       seesPlayer: !!visible,
@@ -387,17 +430,36 @@
     return next;
   }
 
-  // Where a demon starts. Away from the seeker, and away from whichever floor the other demon took —
-  // a round must not open with both of them in one stairwell.
-  function chooseDemonSpawn({ enemy, player, random = Math.random, excludedFloors = [], config } = {}) {
+  // Where a demon starts: away from the seeker, and away from the demons already placed.
+  //
+  // "Away" used to mean *a different floor*, which worked only because the one map was four floors
+  // deep and carried two demons. Cinder Mall is two levels with three of them, so a floor each is
+  // arithmetic with no answer — and a floor was never what mattered. What a round must not open with
+  // is two demons in the same corridor; two at opposite ends of a 96-metre concourse is fine. So the
+  // separation is a distance, and a floor change simply counts as plenty of it.
+  function chooseDemonSpawn({ enemy, player, random = Math.random, excludedFloors = [], taken = [], navigation = null, config } = {}) {
     const cfg = settings(config);
-    const spawns = [];
-    for (let floor = 1; floor <= cfg.floorCount; floor += 1) {
-      for (const z of [-52, -28, 0, 28, 49]) {
-        spawns.push(floorPoint(floor, z < -42 || z > 42 ? 0 : (random() - 0.5) * 3, z, cfg));
-      }
-    }
-    return enemy.chooseSpawn(spawns, player, random, 24, excludedFloors);
+    const separation = (navigation && navigation.minSpawnSeparation) || 24;
+    const nodes = navigation && navigation.spawnNodes && navigation.spawnNodes.length ? navigation.spawnNodes : null;
+    const spawns = nodes
+      ? nodes.map((node) => floorPoint(node.floor, node.x, node.z, cfg))
+      : (() => {
+        const generated = [];
+        for (let floor = 1; floor <= cfg.floorCount; floor += 1) {
+          for (const z of [-52, -28, 0, 28, 49]) {
+            generated.push(floorPoint(floor, z < -42 || z > 42 ? 0 : (random() - 0.5) * 3, z, cfg));
+          }
+        }
+        return generated;
+      })();
+
+    // Anything comfortably clear of every demon already standing. If the building is too small to
+    // give everyone room, fall back to the whole set rather than refusing to place a demon at all.
+    const clear = spawns.filter((spawn) => taken.every((other) => (
+      spawn.floor !== other.floor || Math.hypot(spawn.x - other.x, spawn.z - other.z) >= separation
+    )));
+    const pool = clear.length ? clear : spawns;
+    return enemy.chooseSpawn(pool, player, random, separation, excludedFloors);
   }
 
   // What a client is told about a demon. Its position has to be here — a body nobody can draw is not
