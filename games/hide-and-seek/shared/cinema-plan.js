@@ -537,6 +537,14 @@
         {floor:2,x:-14,z:14.5,y:FLOOR_H},{floor:2,x:14,z:-6,y:FLOOR_H}
       ]
     };
+    spawns.flashlights = [
+      // The flat front cross-aisles, below the tiered seating and away from exit leaves.
+      ...AUDITORIUMS.map(aud => ({ id:`cinema-${aud.id}`, label:`${aud.name} front aisle`,
+        floor:1, x:aud.side === 'west' ? -30 : 30, z:aud.minZ + 3.5, y:0 })),
+      // Projection staff leave spare lights on the clear floor beside each booth entrance.
+      ...BOOTHS.map(booth => ({ id:`cinema-${booth.id}`, label:`${booth.name} entry aisle`,
+        floor:2, x:booth.side === 'west' ? -16 : 16, z:booth.entryZ - 1.7, y:FLOOR_H })),
+    ];
     const colliders=boxes.filter(e=>e.collider).map(e=>({...boxBounds(e),id:e.id||null,floor:e.floor}));
 
     return {elevator:{centerX:LIFT.centerX,centerZ:LIFT.centerZ,frontZ:LIFT.frontZ,halfWidth:LIFT.halfWidth,halfDepth:LIFT.halfDepth,floors:[1,2]},boxes,surfaces,colliders,swingDoors,slidingDoors,roomDoors,secretPanels,secretTunnels,roomCenters,furnishings,hallDoors,signs,doorFrames,wallLamps,lights,fixtures,stairs,spawns,navigation,

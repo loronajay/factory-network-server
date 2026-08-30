@@ -431,14 +431,14 @@
     // The door nodes are the hotel catching up with the other two maps. The spine alone describes
     // where a body walks *along* the corridor and says nothing about how it gets off it, so a route
     // planned from inside a bedroom aimed at the nearest spine stop, which is through the bedroom
-    // wall � the demon and the CPU hiders would grind into it until the mover gave the leg up. The
+    // wall — the demon and the CPU hiders would grind into it until the mover gave the leg up. The
     // seeker had a hotel-shaped workaround for exactly this (`corridorSweep` below, the old |x|=3.75
     // dogleg); putting the doorway in the graph is the same knowledge said once, as data, where
     // every routed body reads it.
     // Clear of the jamb, not level with it. The old sweep dogleg used |x| = 3.75, which is inside the
     // corridor wall's own thickness and only walkable because the doorway happens to be a hole in it:
-    // a body approaching that point at an angle clips the jamb, stops dead, and � the mover having
-    // given the leg up � re-plans onto it forever. A waypoint a body may be sent to from anywhere on
+    // a body approaching that point at an angle clips the jamb, stops dead, and — the mover having
+    // given the leg up — re-plans onto it forever. A waypoint a body may be sent to from anywhere on
     // the floor has to stand in open corridor.
     const DOORWAY_X = 3.4;
     function createNavigation(shell) {
@@ -549,6 +549,13 @@
     for (const def of floorDefs) {
       for (const z of [-34, -12, 12, 34]) spawns.hiders.push({ floor: def.id, x: 0, z, y: floorY(def.id) });
     }
+    // Clear floor beside the guest-room dressers, away from beds, couches and door arcs.
+    spawns.flashlights = floorDefs.flatMap(def => ['02', '05', '11', '14'].map(suffix => {
+      const room = roomCenters.find(entry => entry.roomNumber === `${def.id}${suffix}`);
+      const outward = room.side === 'left' ? -1 : 1;
+      return { id: `hotel-${room.roomNumber}`, label: `Room ${room.roomNumber} dresser aisle`,
+        floor: def.id, x: room.x - outward, y: floorY(def.id), z: room.z - 1.4 };
+    }));
 
     const colliders = boxes
       .filter((entry) => entry.collider)

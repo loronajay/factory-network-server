@@ -68,9 +68,32 @@
     return { charge: normalizeCharge(state?.charge) };
   }
 
+  // Plans own possible locations; only the round owner samples them. Online this runs once on
+  // the server's seeded RNG, never on a rendering client or in the tick. Sampling per floor keeps
+  // a lucky roll from putting all the resupplies on one level. Records never alias the cached plan.
+  function createFloorPickups(points = [], random = Math.random) {
+    const floors = new Map();
+    for (const point of points) {
+      if (!floors.has(point.floor)) floors.set(point.floor, []);
+      floors.get(point.floor).push(point);
+    }
+    const pickups = [];
+    for (const candidates of floors.values()) {
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+      for (const point of candidates.slice(0, Math.ceil(candidates.length / 2))) {
+        pickups.push({ id: `floor-flashlight-${point.id}`, x: point.x, y: point.y, z: point.z,
+          floor: point.floor, charge: normalizeCharge(0.35 + random() * 0.3) });
+      }
+    }
+    return pickups;
+  }
+
   return {
     INTENT_GRACE_MS,
-    addFlashlightCharge, createFlashlightDrop, createFlashlightIntent, createFlashlightState,
+    addFlashlightCharge, createFlashlightDrop, createFlashlightIntent, createFlashlightState, createFloorPickups,
     describeFlashlight, reconcileFlashlight, setFlashlight, tickFlashlight, toggleFlashlight,
   };
 });

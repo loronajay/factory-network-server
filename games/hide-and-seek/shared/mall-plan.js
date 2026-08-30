@@ -771,6 +771,22 @@
       ],
     };
 
+    // Shop-floor resupplies beside displays and counters, not on top of the furniture.
+    spawns.flashlights = [
+      [1, 'department', 'Department store rack aisle', -32, -10],
+      [1, 'food-court', 'Food court table aisle', 32, -18],
+      [1, 'arcade', 'Arcade machine aisle', 36, -2],
+      [1, 'pharmacy', 'Pharmacy counter approach', 24, 25],
+      [1, 'office', 'Office desk aisle', 14, -28],
+      [1, 'atrium', 'Atrium seating', -10, 5],
+      [2, 'beds', 'Bed display aisle', -36, -18],
+      [2, 'furniture', 'Furniture showroom seating', -37, 12],
+      [2, 'toys', 'Toy display aisle', -16, -27],
+      [2, 'salon', 'Salon waiting area', 2, -25],
+      [2, 'books', 'Bookshop reading area', 20, -26],
+      [2, 'cinema', 'Cinema counter approach', 29.5, 18],
+    ].map(([floor, id, label, x, z]) => ({ id: `mall-${id}`, label, floor, x, z, y: levelY(floor) }));
+
     const colliders = boxes
       .filter((entry) => entry.collider)
       .map((entry) => ({ ...boxBounds(entry), id: entry.id || null, floor: entry.floor }));

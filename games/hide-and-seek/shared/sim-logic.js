@@ -45,18 +45,31 @@
   const PICKUP_RADIUS = 1.15;
   const PICKUP_HEIGHT = 1.3;
 
-  const NO_INPUT = Object.freeze({ forward: 0, strafe: 0, yaw: 0, crouch: false, sprint: false, light: false, interact: false });
+  const NO_INPUT = Object.freeze({ forward: 0, strafe: 0, yaw: 0, crouch: false, sprint: false, light: false, interact: false, interactId: null });
+
+  // A fixture id is the plan's own string ('door-105', 'elevator-button-2'). Anything else on the
+  // wire is not an aim, and an unbounded string is not an id — it is a client trying to make the
+  // authority hold onto something.
+  const MAX_FIXTURE_ID = 64;
 
   const clean = (value) => Math.round(Number(value) * 1e6) / 1e6;
 
   // Only these fields are read off an input. Anything else a client attaches — a position, a charge,
   // an "I tagged them" — never reaches the state.
+  //
+  // `interactId` is the one field that names a thing in the world, and it is deliberately still an
+  // *intent*: it says what the crosshair was on, not what opened. `resolveInteractions` re-tests
+  // reach, height and facing on that exact fixture before honouring it, so the worst a lying client
+  // can do is pick between two fixtures it could already have reached either way.
   function readInput(raw) {
     if (!raw) return NO_INPUT;
     const forward = Math.max(-1, Math.min(1, Number(raw.forward) || 0));
     const strafe = Math.max(-1, Math.min(1, Number(raw.strafe) || 0));
     const yaw = Number.isFinite(raw.yaw) ? Number(raw.yaw) : 0;
-    return { forward, strafe, yaw, crouch: !!raw.crouch, sprint: !!raw.sprint, light: !!raw.light, interact: !!raw.interact };
+    const interactId = typeof raw.interactId === 'string' && raw.interactId && raw.interactId.length <= MAX_FIXTURE_ID
+      ? raw.interactId
+      : null;
+    return { forward, strafe, yaw, crouch: !!raw.crouch, sprint: !!raw.sprint, light: !!raw.light, interact: !!raw.interact, interactId };
   }
 
   // The world the simulation walks, built straight off the plan. `modules/world.js` is the browser's
@@ -206,6 +219,7 @@
         crouching: false,
         moving: false,
         interacting: false,
+        interactId: null,
         stamina: stamina.createStaminaState(),
         flashlight: flashlight.createFlashlightState(false, 1),
         heat: heat.createPlayerHeat(entry.spawn),
@@ -215,7 +229,8 @@
       if (fixtureState && roundState.phase === round.PHASES.HIDING) fixtureState = fixtures.holdElevator(fixtureState);
       if (fixtureState) fixtures.publishFixtures(fixtureState, { config: fixtureConfig, space });
       const demons = createDemons(bodies, roundState);
-      return { tick: 0, elapsed: 0, round: roundState, bodies, fixtures: fixtureState, demons, pickups: [], events: [] };
+      const pickups = flashlight.createFloorPickups(hotel?.spawns?.flashlights, random);
+      return { tick: 0, elapsed: 0, round: roundState, bodies, fixtures: fixtureState, demons, pickups, events: [] };
     }
 
     // The map's demons, off one factory, spawned apart: each one is placed clear of the demons
@@ -292,6 +307,7 @@
         crouching,
         moving: moved,
         interacting: command.interact,
+        interactId: command.interactId,
         stamina: staminaState,
         flashlight: lit,
         heat: heat.updatePlayerHeat(entry.heat, pose, zoneList, delta, heatConfig),
@@ -308,7 +324,9 @@
         if (!entry.interacting || (previous && previous.interacting)) continue;
         const participant = participantOf(state, entry.id);
         if (!participant || !participant.alive) continue;
-        const item = fixtures.selectInteractable(catalog, entry, { config: fixtureConfig, elevatorY: fixtureState.elevator.y });
+        const item = fixtures.selectInteractable(catalog, entry, {
+          config: fixtureConfig, elevatorY: fixtureState.elevator.y, preferId: entry.interactId,
+        });
         if (!item) continue;
         const result = fixtures.applyInteraction(fixtureState, item, entry.id);
         fixtureState = result.state;
@@ -361,8 +379,11 @@
       }));
       let doors = fixtureState;
       const hunted = new Set();
+      // The head start is the hiders' phase. A demon walks it, but it does not look, does not read
+      // the heat meter and cannot take anybody — see `goDormant` in `demon-logic.js` for why.
+      const dormant = state.round.phase === round.PHASES.HIDING;
       const ctx = {
-        space, movement, enemy, heat, heatConfig, random,
+        space, movement, enemy, heat, heatConfig, random, dormant,
         candidates, huntCandidates, rooms, navigation, navigator, config: demonConfig,
         // A room with no door is open, not shut. While the hotel was the only building every room
         // had a leaf, so "no door record" could only mean a bad room number and answering `locked`
@@ -393,6 +414,7 @@
       };
       const demons = state.demons.map((entry) => demonLogic.tickDemon(entry, delta, ctx));
       let roundState = state.round;
+      if (dormant) return { demons, fixtures: doors, round: roundState, hunted };
       // The round does not care which demon caught you; `resolveDemonCatch` takes a player id and a
       // third demon would cost nothing here.
       for (const entry of demons) {
@@ -437,13 +459,17 @@
           if (Math.abs(entry.y - pickup.y) > PICKUP_HEIGHT) continue;
           if (Math.hypot(entry.x - pickup.x, entry.z - pickup.z) > PICKUP_RADIUS) continue;
           if (entry.flashlight.charge >= 1) continue;
+          if (space.sightBlocked?.(
+            { x: entry.x, y: entry.y + 0.3, z: entry.z },
+            { x: pickup.x, y: pickup.y + 0.18, z: pickup.z },
+          )) continue;
           taker = index;
           break;
         }
         if (taker < 0) { remaining.push(pickup); continue; }
         claimed = claimed.slice();
         claimed[taker] = { ...claimed[taker], flashlight: flashlight.addFlashlightCharge(claimed[taker].flashlight, pickup.charge) };
-        events.push({ type: 'flashlight-pickup', playerId: claimed[taker].id, charge: pickup.charge });
+        events.push({ type: 'flashlight-pickup', playerId: claimed[taker].id, charge: claimed[taker].flashlight.charge });
       }
       return { bodies: claimed, pickups: remaining };
     }

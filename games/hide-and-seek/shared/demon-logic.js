@@ -295,6 +295,33 @@
     return { ...demon, routePurpose: 'hunt' };
   }
 
+  // The head start belongs to the hiders, and it used to belong to the demons too. A hider looking
+  // for a spot in the first forty-five seconds has no information — no seeker to hear, no idea which
+  // corridor is walked — so walking into a demon then is not a mistake they could have avoided, and
+  // in a small round it ends the match before the seeker's cabin has even opened.
+  //
+  // A dormant demon is not removed and is not frozen: it patrols, it is visible, and it is worth
+  // learning the position of. It simply does not look, does not read the heat meter, and (over in
+  // `sim-logic.js`, which owns the catch) cannot take anybody. It wakes with the seeker, wherever it
+  // has wandered to by then, which is why this resets its mind rather than its body.
+  function goDormant(demon, ctx) {
+    const { ENEMY_STATES } = ctx.enemy;
+    const next = {
+      ...demon,
+      awareness: demon.awareness.state === ENEMY_STATES.ROAM ? demon.awareness : ctx.enemy.createAwareness(),
+      detectedTargetId: null,
+      detectionCooldown: 0,
+      chasePlanCooldown: 0,
+    };
+    if (demon.huntZone || demon.huntTargetId) {
+      ctx.setHunted(null);
+      next.huntZone = null;
+      next.huntTargetId = null;
+    }
+    if (demon.routePurpose !== 'roam') { next.route = []; next.routePurpose = 'roam'; }
+    return next;
+  }
+
   // --- walking ----------------------------------------------------------------------------------
 
   function speedFor(demon, ctx) {
@@ -412,7 +439,7 @@
 
   // One demon, one tick. `ctx` carries the world (`space`), who is in it (`candidates`), the pure
   // rule modules, and the two callbacks that reach outside a demon: opening a door and telling a
-  // player they are being hunted.
+  // player they are being hunted. `ctx.dormant` is the head start: it patrols but does not hunt.
   function tickDemon(demon, delta, ctx) {
     const cfg = settings(ctx.config);
     const context = {
@@ -426,8 +453,12 @@
       openDoorAhead: ctx.openDoorAhead || (() => {}),
     };
     let next = demon.awareness ? demon : { ...demon, awareness: ctx.enemy.createAwareness() };
-    next = updateAwareness(next, delta, context);
-    next = updateHunt(next, context);
+    if (context.dormant) {
+      next = goDormant(next, context);
+    } else {
+      next = updateAwareness(next, delta, context);
+      next = updateHunt(next, context);
+    }
     const { ENEMY_STATES } = ctx.enemy;
     if (next.awareness.state === ENEMY_STATES.ROAM && !next.route.length) next = choosePatrol(next, context);
     if (next.awareness.state === ENEMY_STATES.SEARCH && !next.route.length && next.awareness.lastSeen) {

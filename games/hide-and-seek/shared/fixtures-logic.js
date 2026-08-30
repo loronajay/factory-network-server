@@ -17,7 +17,10 @@
   //
   // Interaction targeting is here too, and deliberately not a raycast. The client aims with a
   // `THREE.Raycaster` against meshes; the authority aims with distance, height and a facing dot
-  // against plain records. A client sends "I pressed E", never "I opened door-201".
+  // against plain records. Those two questions can disagree when a cone holds more than one fixture,
+  // and a player reads that as "I pressed E and the wrong thing opened", so the press now carries
+  // the id the crosshair was on. It is still only an aim: a client sends "I pressed E, at door-201",
+  // never "I opened door-201", and `selectInteractable` re-tests reach before honouring it.
 
   const FIXTURE_KINDS = Object.freeze({
     DOOR: 'door', PANEL: 'panel', DRAWER: 'drawer',
@@ -176,7 +179,13 @@
 
   // Distance, then height, then facing — the same ordering `canTag` uses, and for the same reason:
   // the cheap rejections come first, because this runs for every player who presses a key.
-  function selectInteractable(catalog, viewer, { config, elevatorY = 0 } = {}) {
+  //
+  // `preferId` is what the client's crosshair was actually on. Nearest-in-the-cone is a reasonable
+  // guess and a poor answer when two fixtures share a cone — a dresser standing beside its room
+  // door is the common case — so where the aim survives the very same reach test, the aim wins. It
+  // grants nothing: a fixture the player could not have reached is refused exactly as before, and
+  // this falls straight back to its own pick.
+  function selectInteractable(catalog, viewer, { config, elevatorY = 0, preferId = null } = {}) {
     const cfg = settings(config);
     // The camera's forward is -Z rotated by yaw, exactly as the mover derives it.
     const forwardX = -Math.sin(viewer.yaw || 0);
@@ -190,6 +199,7 @@
       if (distance > cfg.reachDistance || distance <= 0) continue;
       if (Math.abs(reachY(item, elevatorY) - (viewer.y || 0)) > cfg.reachHeight) continue;
       if ((dx * forwardX + dz * forwardZ) / distance < cfg.facingDot) continue;
+      if (preferId && item.id === preferId) return item;
       if (distance < bestDistance) { best = item; bestDistance = distance; }
     }
     return best;

@@ -525,6 +525,11 @@
       ]
     };
 
+    // Department-side circulation, beside beds/workstations but clear of the door swing.
+    spawns.flashlights = ['101','102','103','105','106','107','201','202','204','205','206','207'].map(id => {
+      const room = roomBy(id), point = inside(id, 3, -4);
+      return { id:`hospital-${id}`, label:`${room.name} equipment aisle`, ...point, y:levelY(point.floor) };
+    });
     const colliders=boxes.filter(e=>e.collider).map(e=>({...boxBounds(e),id:e.id||null,floor:e.floor}));
 
     return {
