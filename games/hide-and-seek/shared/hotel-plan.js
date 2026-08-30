@@ -441,6 +441,9 @@
       }
       const stairLayout = layout.createStairLayout({ floorCount: floorDefs.length, floorHeight: config.floorHeight });
       return {
+        // This older spine graph has no room-entry nodes. Preserve its explicit bedroom doglegs;
+        // maps with complete aisle/door graphs use the navigator directly.
+        corridorSweep: { roomThreshold: 4.25, doorwayX: 3.75 },
         nodes,
         edges,
         connectors: [{

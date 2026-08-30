@@ -56,6 +56,12 @@
     Object.freeze({ id: 'nightwatch', name: 'The Nightwatch', hunts: false, accentColor: 0x22305e, eyeColor: 0x7fb4ff }),
   ]);
 
+  const HOSPITAL_DEMONS = Object.freeze([
+    Object.freeze({ id: 'surgeon', name: 'The Surgeon', hunts: true, accentColor: 0x315951, eyeColor: 0x9bffe1 }),
+    Object.freeze({ id: 'matron', name: 'The Matron', hunts: false, accentColor: 0x722837, eyeColor: 0xff6677 }),
+    Object.freeze({ id: 'orderly', name: 'The Orderly', hunts: false, accentColor: 0x45566c, eyeColor: 0x98cfff }),
+  ]);
+
   const MAPS = Object.freeze([
     Object.freeze({
       id: 'grand-hotel',
@@ -83,6 +89,16 @@
       floorCount: 2,
       plan: Object.freeze({ global: 'MallPlan', factory: 'createMallPlan', floorDefsKey: 'FLOOR_DEFS' }),
       demons: MALL_DEMONS,
+    }),
+    Object.freeze({
+      id: 'mercy-hospital',
+      name: 'Mercy Hospital',
+      eyebrow: 'TWO FLOORS',
+      blurb: 'Fourteen departments, a service stairwell, and three staff who never clocked out.',
+      status: MAP_STATUS.READY,
+      floorCount: 2,
+      plan: Object.freeze({ global: 'HospitalPlan', factory: 'createHospitalPlan', floorDefsKey: 'FLOOR_DEFS' }),
+      demons: HOSPITAL_DEMONS,
     }),
   ]);
 

@@ -2,10 +2,11 @@
   "generator": "games/hide-and-seek/tools/mirror-sim.mjs",
   "files": {
     "modules/game-config.js": "b1658a09821494e670cf687ccd223db7abd07ccf949ec31356bc2661d332f91e",
-    "map-catalog.js": "16ed37c1aa63440833d68413051276fad9f853e94ce880e9d39ad4bf28dd12d7",
+    "map-catalog.js": "9fa232b981803a7845aaebf44f809a1d367fb1472860f2475b28425a7dbb6a37",
     "layout.js": "b9d516d224f6f91f1af4848c34ecafe09dcaac62ead54a436326e3c9ebb232df",
-    "hotel-plan.js": "96aff9c0f8189c633c63e3b22a175b8d9f069d269b2c592170662d0add5419e9",
+    "hotel-plan.js": "134f6ea6047a1e116b1ec38806bda2b3eacecbb62952b5644c6c8ce6cb97acff",
     "mall-plan.js": "7d07a7bceb3840cf36cbeaf91e013b6d3e4164777db1bec1cf191ee6e091fcf2",
+    "hospital-plan.js": "b376b80adef62bfba4cc2dc9613056dac78c4466cc92244dc591d3635a0efcb9",
     "collision-logic.js": "c3c4f1ba3c04ca2d19bfa49ad1fc18be2cb785e6ed3a769e56053d5a3643df8b",
     "movement-logic.js": "1f53657f71badb3daf0dff0e7c71c657ed6ae2920d222b6fc680f93698bf1132",
     "round-logic.js": "ef39ca22b4e01be24540abaed9b0b79723ffec2487b885aa97ad3bbc9cdc05d3",

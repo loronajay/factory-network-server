@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { hideAndSeekLobbyGame } from "./server/hide-and-seek-lobby-game.mjs";
+import { doesLobbyMatchSearch } from '../../src/lobby.mjs';
 import {
   HIDE_AND_SEEK_TICK_RATE,
   advanceHideAndSeekMatch,
@@ -280,6 +281,56 @@ test("a second map is a second building, not a re-skin of the first", () => {
   for (const body of state.bodies) {
     assert.ok(Number.isFinite(body.x) && Number.isFinite(body.z), "a body left the number line");
     assert.ok(body.floor >= 1 && body.floor <= 2, `a body is on floor ${body.floor} of a two-level mall`);
+  }
+});
+
+test('Mercy matchmaking keeps hospital guests apart from hotel and mall lobbies', () => {
+  const room = { ...lobby(), status: 'open', minPlayers: 2, maxPlayers: 8, settings: { mapId: 'mercy-hospital' } };
+  assert.equal(doesLobbyMatchSearch(room, 'hide-and-seek', null, { mapId: 'mercy-hospital' }), true);
+  for (const mapId of ['grand-hotel', 'cinder-mall']) assert.equal(doesLobbyMatchSearch(room, 'hide-and-seek', null, { mapId }), false);
+});
+
+test('Mercy holds the seeker in its own cabin then lets them walk into the hospital', () => {
+  const match = createHideAndSeekMatchState({ ...lobby(), settings: { mapId: 'mercy-hospital' } }, 1000);
+  // Isolate elevator traversal from catches; demon movement is exercised in the roster replay below.
+  match.state.demons = [];
+  const initial = { ...match.state.bodies.find(b => b.id === match.seekerId) };
+  assert.equal(initial.x, 35.5);
+  assert.ok(Math.abs(initial.z - 27.5) < 1);
+  applyHideAndSeekInput(match, match.seekerId, walk(0));
+  run(match, 44);
+  const held = match.state.bodies.find(b => b.id === match.seekerId);
+  assert.equal(held.z, initial.z);
+  assert.equal(match.state.round.phase, 'hiding');
+  run(match, 50);
+  const released = match.state.bodies.find(b => b.id === match.seekerId);
+  assert.equal(match.state.round.phase, 'seeking');
+  assert.ok(released.z < 25, 'the cabin sill or doors trapped the seeker');
+  assert.equal(match.space.blocked(released.x, released.z, released.y), false);
+});
+
+test("Mercy Hospital seats eight players, replicates its staff, and ticks deterministically", () => {
+  const room = { ...lobby('MERCY'), members: new Set(Array.from({ length: 8 }, (_, i) => `guest-${i}`)), settings: { mapId: 'mercy-hospital' } };
+  const a = createHideAndSeekMatchState(room, 1000);
+  const b = createHideAndSeekMatchState(room, 1000);
+  assert.equal(a.mapId, 'mercy-hospital');
+  assert.deepEqual(a.state.demons.map(d => d.id), ['surgeon', 'matron', 'orderly']);
+  assert.equal(a.state.bodies.length, 8);
+  for (const body of a.state.bodies) {
+    assert.equal(a.space.blocked(body.x, body.z, body.y), false);
+    assert.equal(a.space.groundAt(body.x, body.z, body.y), body.y);
+  }
+  for (let tick = 0; tick < 60 * 50; tick++) {
+    a.state = a.engine.tick(a.state, 1 / 60, {});
+    b.state = b.engine.tick(b.state, 1 / 60, {});
+  }
+  const view = serializeHideAndSeekMatch(a, 51000);
+  assert.deepEqual(view, serializeHideAndSeekMatch(b, 51000));
+  assert.equal(view.mapId, 'mercy-hospital');
+  assert.notEqual(view.round.phase, 'hiding');
+  for (const body of [...a.state.bodies, ...a.state.demons]) {
+    assert.ok(Number.isFinite(body.x) && Number.isFinite(body.y) && Number.isFinite(body.z));
+    assert.ok(body.floor >= 1 && body.floor <= 2);
   }
 });
 
