@@ -19,6 +19,8 @@ import "./collision-logic.js";
 import "./hotel-plan.js";
 import "./mall-plan.js";
 import "./hospital-plan.js";
+import "./cinema-navigation.js";
+import "./cinema-plan.js";
 import "./movement-logic.js";
 import "./round-logic.js";
 import "./stamina-logic.js";
@@ -46,6 +48,7 @@ export const layout = globalThis.HotelLayout;
 export const plan = globalThis.HotelPlan;
 export const mallPlan = globalThis.MallPlan;
 export const hospitalPlan = globalThis.HospitalPlan;
+export const cinemaPlan = globalThis.CinemaPlan;
 export const collision = globalThis.HotelCollision;
 export const movement = globalThis.HotelMovement;
 export const round = globalThis.HotelRound;
@@ -57,6 +60,6 @@ export const fixtures = globalThis.HotelFixtures;
 export const demon = globalThis.HotelDemon;
 export const sim = globalThis.HotelSim;
 
-for (const [name, api] of Object.entries({ maps, layout, plan, mallPlan, hospitalPlan, collision, movement, round, stamina, sanity, flashlight, enemy, fixtures, demon, sim })) {
+for (const [name, api] of Object.entries({ maps, layout, plan, mallPlan, hospitalPlan, cinemaPlan, collision, movement, round, stamina, sanity, flashlight, enemy, fixtures, demon, sim })) {
   if (!api) throw new Error(`Hide and Seek shared module "${name}" failed to load`);
 }

@@ -180,8 +180,8 @@
         furnish(floor, baseY, 'dresser', centerX, centerZ - 3.02, Math.PI, { keyId, keyLabel });
         furnish(floor, baseY, 'plant', centerX + outward * 2.7, centerZ + 2.35, 0, { scale: 1 });
       } else if (variant === 'suite') {
-        furnish(floor, baseY, 'couch', centerX, centerZ + 1.15, Math.PI);
-        furnish(floor, baseY, 'bed', centerX + outward * 1.95, centerZ - 1.25, side === 'left' ? HALF_TURN : -HALF_TURN);
+        furnish(floor, baseY, 'couch', centerX, centerZ + (isSecret ? 1.35 : 1.15), Math.PI);
+        furnish(floor, baseY, 'bed', centerX + outward * 1.95, centerZ - (isSecret ? 0.2 : 1.25), side === 'left' ? HALF_TURN : -HALF_TURN);
         furnish(floor, baseY, 'desk', centerX - outward * 1.45, centerZ + 3.02, 0, { lamp: true });
         furnish(floor, baseY, 'dresser', centerX - 0.15 * outward, centerZ - 3.02, Math.PI, { keyId, keyLabel });
         furnish(floor, baseY, 'plant', centerX - outward * 2.65, centerZ + 0.65, 0, { scale: 0.95 });
@@ -468,6 +468,27 @@
         const nearest = spine.reduce((best, stop) => (Math.abs(stop.z - door.z) < Math.abs(best.z - door.z) ? stop : best), spine[0]);
         edges.push([nearest.id, id]);
       }
+      // Secret passages are traversable routes, not demon-proof refuges. Approach each narrow
+      // panel squarely from the bedroom and join the two mouths along the passage centerline.
+      for (const tunnel of secretTunnels) {
+        let previous = null;
+        for (const roomId of tunnel.id.split('-').slice(0, 2)) {
+          const room = roomCenters.find((entry) => entry.roomNumber === roomId);
+          const side = Math.sign(room.x), z = room.z - 2.35;
+          const variant = floorDefs.find((def) => def.id === room.floor).roomVariants[roomId];
+          const points = variant === 'maintenance'
+            ? [[side * 7.8, room.z], [side * 11.4, room.z], [side * 11.4, z], [side * 13.25, z]]
+            : [[side * 7.8, room.z], [side * 7.8, room.z - 1.8], [side * 11.4, room.z - 1.8], [side * 11.4, z], [side * 13.25, z]];
+          let last = `door-node-${roomId}`;
+          points.forEach(([x, pointZ], index) => {
+            const id = `passage-${roomId}-${index}`;
+            nodes.push({ id, floor: room.floor, x, z: pointZ });
+            edges.push([last, id]); last = id;
+          });
+          if (previous) edges.push([previous, last]);
+          previous = last;
+        }
+      }
       const stairLayout = layout.createStairLayout({ floorCount: floorDefs.length, floorHeight: config.floorHeight });
       return {
         // The CPU seeker's room-to-room sweep. The graph now carries the same doglegs as door nodes,
@@ -486,9 +507,8 @@
           layout: stairLayout,
           shell,
         }],
-        // Where a round may open a demon. Kept off the spine's exact stops so three demons in a
-        // two-floor building still read as three separate bodies.
-        spawnNodes: floorDefs.flatMap((def) => [-52, -28, 0, 28, 49].map((z) => ({ floor: def.id, x: 0, z }))),
+        // Reserve the north lobby beyond every hider seat, with one safe start per floor.
+        spawnNodes: floorDefs.map((def) => ({ floor: def.id, x: 0, z: -58.5 })),
         minSpawnSeparation: 24,
       };
     }

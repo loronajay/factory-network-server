@@ -17,6 +17,27 @@ import {
 
 const MEMBERS = ["socket-a", "socket-b", "socket-c"];
 
+test('Crowne Point seats eight guests with two demons and replays deterministically', () => {
+  const room = { ...lobby('CINEMA'), members: new Set(Array.from({ length: 8 }, (_, i) => `guest-${i}`)), settings: { mapId: 'crowne-point-cinema' } };
+  const a = createHideAndSeekMatchState(room, 1000), b = createHideAndSeekMatchState(room, 1000);
+  assert.equal(a.mapId, 'crowne-point-cinema');
+  assert.deepEqual(a.state.demons.map(d => d.id), ['usher', 'projectionist']);
+  assert.equal(a.state.bodies.length, 8);
+  for (const body of a.state.bodies) {
+    assert.equal(a.space.blocked(body.x, body.z, body.y), false);
+    assert.equal(a.space.groundAt(body.x, body.z, body.y), body.y);
+  }
+  for (let tick = 0; tick < 60 * 50; tick++) {
+    a.state = a.engine.tick(a.state, 1 / 60, {});
+    b.state = b.engine.tick(b.state, 1 / 60, {});
+  }
+  assert.deepEqual(serializeHideAndSeekMatch(a, 51000), serializeHideAndSeekMatch(b, 51000));
+  assert.equal(serializeHideAndSeekMatch(a).mapId, 'crowne-point-cinema');
+  const searchRoom = { ...room, members: new Set(MEMBERS), status: 'open', minPlayers: 2, maxPlayers: 8 };
+  assert.equal(doesLobbyMatchSearch(searchRoom, 'hide-and-seek', null, room.settings), true);
+  assert.equal(doesLobbyMatchSearch(searchRoom, 'hide-and-seek', null, { mapId: 'grand-hotel' }), false);
+});
+
 function lobby(seed = "SEEDA") {
   return {
     roomCode: "HOTEL",

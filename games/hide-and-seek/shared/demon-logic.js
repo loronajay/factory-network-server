@@ -1,8 +1,8 @@
 (function attachHotelDemon(root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./collision-logic.js') : root.HotelCollision);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.HotelDemon = api;
-})(typeof window !== 'undefined' ? window : globalThis, function createHotelDemonApi() {
+})(typeof window !== 'undefined' ? window : globalThis, function createHotelDemonApi(collision) {
   'use strict';
 
   // A demon as a body and a mind, with no renderer anywhere near it.
@@ -65,12 +65,18 @@
     return (floor - 1) * cfg.floorHeight;
   }
 
+  // The cabin is protected even with its doors open. The hall outside remains huntable.
+  function isSafeHaven(point, elevator) {
+    return collision.inCabinFootprint(point, elevator, { frontMargin: 0 });
+  }
+
   // "Is this body on the stairs" — asked of the building rather than of one hotel's shell, because a
   // mall's escalators and service stair are two separate volumes and neither is the hotel's.
   //
   // A raw shell is still accepted so a caller holding one keeps working; a context resolves through
   // its navigation instead.
   function isInStairwell(point, source) {
+    if (source?.enemy && (source.navigation || source.hotel?.navigation)) return !!navigatorOf(source).connectorContaining(point);
     const shells = shellsOf(source);
     for (const bounds of shells) {
       if (point.x >= bounds.xWest - 0.2 && point.x <= bounds.xEast + 0.2
@@ -139,6 +145,7 @@
   // hall to its Z and stepping in, and a mall reaches a store by walking the ring round its atrium.
   function planRoute(demon, target, purpose, ctx) {
     const cfg = ctx.config;
+    if (isSafeHaven(target, cfg.elevator)) return { ...demon, route: [], routePurpose: purpose };
     const navigator = navigatorOf(ctx);
     const fromFloor = nearestFloor(demon.y, cfg);
     const toFloor = target.floor || nearestFloor(target.y, cfg);
@@ -347,11 +354,14 @@
     const unlock = demon.routePurpose === 'hunt'
       || demon.awareness.state === ENEMY_STATES.CHASE
       || demon.awareness.state === ENEMY_STATES.SEARCH;
-    ctx.openDoorAhead(demon, target, { unlock });
+    // An opening leaf is temporarily solid. Keep the crossing waypoint and let the swing finish
+    // instead of sliding into its hinge or discarding the doorway from the route.
+    if (ctx.openDoorAhead(demon, target, { unlock })) return { ...demon, moving: false, avoidance: null };
     const body = { height: cfg.bodyHeight, radius: cfg.bodyRadius };
     const step = ctx.movement.stepToward(ctx.space, body, { x: demon.x, y: demon.y, z: demon.z }, target, {
       speed: speedFor(demon, ctx), delta, arriveRadius: cfg.arriveRadius, guided: !!target.guided, avoidance: demon.avoidance,
     });
+    if (isSafeHaven(step, cfg.elevator)) return { ...demon, moving: false, route: [], avoidance: null };
     if (step.arrived) {
       return { ...demon, x: round6(step.x), y: round6(step.y), z: round6(step.z), route: demon.route.slice(1), moving: false, avoidance: null };
     }
@@ -401,6 +411,7 @@
     const caught = [];
     for (const candidate of candidates || []) {
       if (!candidate) continue;
+      if (isSafeHaven(candidate, cfg.elevator)) continue;
       if (Math.abs(candidate.y - demon.y) >= cfg.catchHeight) continue;
       if (Math.hypot(candidate.x - demon.x, candidate.z - demon.z) >= cfg.catchDistance) continue;
       if (space && space.sightBlocked && space.sightBlocked(
@@ -421,6 +432,8 @@
     const context = {
       ...ctx,
       config: cfg,
+      candidates: (ctx.candidates || []).filter((candidate) => !isSafeHaven(candidate, cfg.elevator)),
+      huntCandidates: (ctx.huntCandidates || []).filter((candidate) => !isSafeHaven(candidate, cfg.elevator)),
       emit: ctx.emit || (() => {}),
       setHunted: ctx.setHunted || (() => {}),
       openDoor: ctx.openDoor || (() => {}),
@@ -446,14 +459,14 @@
     return next;
   }
 
-  // Where a demon starts: away from the seeker, and away from the demons already placed.
+  // Where a demon starts: away from every player, and away from the demons already placed.
   //
   // "Away" used to mean *a different floor*, which worked only because the one map was four floors
   // deep and carried two demons. Cinder Mall is two levels with three of them, so a floor each is
   // arithmetic with no answer — and a floor was never what mattered. What a round must not open with
   // is two demons in the same corridor; two at opposite ends of a 96-metre concourse is fine. So the
   // separation is a distance, and a floor change simply counts as plenty of it.
-  function chooseDemonSpawn({ enemy, player, random = Math.random, excludedFloors = [], taken = [], navigation = null, config } = {}) {
+  function chooseDemonSpawn({ enemy, player, players = [], random = Math.random, excludedFloors = [], taken = [], navigation = null, config } = {}) {
     const cfg = settings(config);
     const separation = (navigation && navigation.minSpawnSeparation) || 24;
     const nodes = navigation && navigation.spawnNodes && navigation.spawnNodes.length ? navigation.spawnNodes : null;
@@ -469,13 +482,20 @@
         return generated;
       })();
 
-    // Anything comfortably clear of every demon already standing. If the building is too small to
-    // give everyone room, fall back to the whole set rather than refusing to place a demon at all.
-    const clear = spawns.filter((spawn) => taken.every((other) => (
+    // Demon spacing may fall back to the player-safe set; player clearance is never relaxed.
+    const protectedPlayers = [...players, ...(player ? [player] : [])];
+    const safe = spawns.filter((spawn) => protectedPlayers.every((other) => (
       spawn.floor !== other.floor || Math.hypot(spawn.x - other.x, spawn.z - other.z) >= separation
     )));
-    const pool = clear.length ? clear : spawns;
-    return enemy.chooseSpawn(pool, player, random, separation, excludedFloors);
+    // Player clearance is mandatory, even when demon-to-demon spacing cannot be satisfied.
+    if (!safe.length) throw new Error('Map has no demon start clear of all player spawns');
+    const clear = safe.filter((spawn) => taken.every((other) => (
+      spawn.floor !== other.floor || Math.hypot(spawn.x - other.x, spawn.z - other.z) >= separation
+    )));
+    const pool = clear.length ? clear : safe;
+    const allowed = pool.filter((spawn) => !excludedFloors.includes(spawn.floor));
+    const available = allowed.length ? allowed : pool;
+    return available[Math.min(available.length - 1, Math.floor(random() * available.length))];
   }
 
   // What a client is told about a demon. Its position has to be here — a body nobody can draw is not
@@ -495,7 +515,7 @@
 
   return {
     DEFAULTS, PATROL_Z,
-    caughtBy, chooseDemonSpawn, choosePatrol, createDemon, describeDemon, isInStairwell,
+    caughtBy, chooseDemonSpawn, choosePatrol, createDemon, describeDemon, isInStairwell, isSafeHaven,
     nearestFloor, planRoute, selectBlockingDoor, tickDemon,
   };
 });

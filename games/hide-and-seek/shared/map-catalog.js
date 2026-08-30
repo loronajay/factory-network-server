@@ -100,6 +100,16 @@
       plan: Object.freeze({ global: 'HospitalPlan', factory: 'createHospitalPlan', floorDefsKey: 'FLOOR_DEFS' }),
       demons: HOSPITAL_DEMONS,
     }),
+    Object.freeze({
+      id: 'crowne-point-cinema', name: 'Crowne Point Cinema', eyebrow: 'SIX SCREENS · TWO FLOORS',
+      blurb: 'Dark auditoriums, looping service aisles and projection booths. Two staff remain after the final showing.',
+      status: MAP_STATUS.READY, floorCount: 2,
+      plan: Object.freeze({ global: 'CinemaPlan', factory: 'createCinemaPlan', floorDefsKey: 'FLOOR_DEFS' }),
+      demons: Object.freeze([
+        Object.freeze({ id: 'usher', name: 'The Usher', hunts: true, accentColor: 0x702331, eyeColor: 0xffba66 }),
+        Object.freeze({ id: 'projectionist', name: 'The Projectionist', hunts: false, accentColor: 0x294755, eyeColor: 0x98e5ff }),
+      ]),
+    }),
   ]);
 
   const DEFAULT_MAP_ID = MAPS[0].id;

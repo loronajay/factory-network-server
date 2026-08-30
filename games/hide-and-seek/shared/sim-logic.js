@@ -154,7 +154,7 @@
         && (position.z - shaft.centerZ) * (shaft.frontZ > shaft.centerZ ? 1 : -1)
           < Math.abs(shaft.frontZ - shaft.centerZ) + 0.12);
     const fixtureConfig = { ...(config.fixtures || {}), floorHeight: player.floorHeight, elevatorCenterX: shaft.centerX, elevatorCenterZ: shaft.centerZ, elevatorFrontZ: shaft.frontZ };
-    const demonConfig = { ...(config.demon || {}), floorHeight: player.floorHeight, floorCount: player.floorCount };
+    const demonConfig = { ...(config.demon || {}), floorHeight: player.floorHeight, floorCount: player.floorCount, elevator: shaft };
     // The roster is the map's, and its length is the demon count. Two was the hotel's number, never
     // a rule — a simulation given three walks, looks and catches with three.
     const demonRoster = normalizeRoster(config.demons);
@@ -167,6 +167,7 @@
     const catalog = hotel && fixtures ? fixtures.createFixtureCatalog(hotel, { config: fixtureConfig }) : [];
     const catalogById = new Map(catalog.map((item) => [item.id, item]));
     const doorCatalog = catalog.filter((item) => item.kind === 'door');
+    const demonDoorCatalog = catalog.filter((item) => item.kind === 'door' || item.kind === 'panel');
     const doorByRoom = new Map(doorCatalog.map((item) => [item.roomNumber, item]));
     const rooms = hotel ? hotel.roomCenters.map((room) => ({ roomNumber: room.roomNumber, floor: room.floor, x: room.x, z: room.z })) : [];
     // How a demon gets around this building comes off the building itself. It used to be read out of
@@ -174,7 +175,7 @@
     // and neither is that. A plan with no navigation still ticks: its demons walk straight at what
     // they want, which is the correct answer for a map that is a single open room.
     const navigation = (hotel && hotel.navigation) || null;
-    const navigator = navigation && enemy ? enemy.createNavigator(navigation) : null;
+    const navigator = navigation && enemy ? enemy.createNavigator(navigation, { space }) : null;
 
     function setZones(next) { zoneList = next || []; }
 
@@ -231,7 +232,7 @@
       const taken = [];
       return demonRoster.map((entry) => {
         const spawn = demonLogic.chooseDemonSpawn({
-          enemy, player: anchor, random, taken: taken.slice(), navigation, config: demonConfig,
+          enemy, player: anchor, players: bodies, random, taken: taken.slice(), navigation, config: demonConfig,
         });
         taken.push(spawn);
         return demonLogic.createDemon({ id: entry.id, name: entry.name, spawn, hunts: !!entry.hunts });
@@ -379,12 +380,13 @@
         },
         openDoorAhead: (demon, target, options) => {
           if (!doors) return;
-          const closed = doorCatalog.filter((item) => {
+          const closed = demonDoorCatalog.filter((item) => {
             const door = doors.doors[item.id];
-            return door && (!door.open || door.locked);
+            return door && (!door.open || door.locked || Math.abs(door.angle - item.openAngle) > 0.01);
           });
           const item = demonLogic.selectBlockingDoor(demon, target, closed, demonConfig);
           if (item) doors = fixtures.forceDoorOpen(doors, item, options);
+          return !!item && doors.doors[item.id].open && Math.abs(doors.doors[item.id].angle - item.openAngle) > 0.01;
         },
         setHunted: (target) => { if (target) hunted.add(target.id); },
         emit: (event) => events.push(event),

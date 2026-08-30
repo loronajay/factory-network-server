@@ -70,8 +70,8 @@
   //
   // `space` is optional and is what makes joining the graph honest rather than merely near: a body
   // enters the graph at the closest waypoint it can actually walk straight to. Without it the
-  // nearest waypoint by distance can be one on the other side of a wall � the doorway of the shop
-  // next door, the hall stop across a storefront � and the first leg of every route is then a line
+  // nearest waypoint by distance can be one on the other side of a wall — the doorway of the shop
+  // next door, the hall stop across a storefront — and the first leg of every route is then a line
   // through that wall. Callers that have a world pass it; a pure graph test need not.
   function createNavigator(navigation, { space = null } = {}) {
     const nodes = (navigation && navigation.nodes) || [];
@@ -99,13 +99,23 @@
     }
 
     function reachable(point, node, y) {
+      if (space?.groundAt && space?.blocked) {
+        const steps = Math.max(1, Math.ceil(cost(point, node) / 0.2));
+        let feetY = Number.isFinite(y) ? y : (point.y || 0);
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps, x = point.x + (node.x - point.x) * t, z = point.z + (node.z - point.z) * t;
+          feetY = space.groundAt(x, z, feetY);
+          if (feetY == null || space.blocked(x, z, feetY, 2.05, 0.46)) return false;
+        }
+        return true;
+      }
       if (!space || !space.sightBlocked) return true;
       const eye = (Number.isFinite(y) ? y : (Number.isFinite(point.y) ? point.y : 0)) + 1;
       return !space.sightBlocked({ x: point.x, y: eye, z: point.z }, { x: node.x, y: eye, z: node.z }, { tolerance: 0.2 });
     }
 
     // The nearest waypoint the body could walk straight to, falling back to the nearest one of all
-    // when the body is somewhere no waypoint can see � wedged in a corner, mid-doorway � because a
+    // when the body is somewhere no waypoint can see — wedged in a corner, mid-doorway — because a
     // route to a waypoint it has to squeeze towards still beats no route at all.
     function nearestNode(point, floor, { y = null } = {}) {
       const candidates = nodesByDistance(point, floor);
@@ -150,22 +160,20 @@
     // The waypoints between two points on one floor, target excluded — the caller appends the target
     // itself, because only it knows whether the last step is a room, a landing or a body.
     function walkRoute(from, to, floor = from.floor, { y = null } = {}) {
+      // Replanning a clear leg must keep moving forward, including across a doorway. A nearest
+      // waypoint behind the body otherwise pulls it back on every chase refresh.
+      if (space?.blocked && reachable(from, to, y)) return [];
       const start = nearestNode(from, floor, { y });
       const goal = nearestNode(to, floor, { y });
       if (!start || !goal) return [];
       const path = shortestPath(start.id, goal.id);
       if (!path) return [];
       const points = path.map((id) => byId.get(id));
-      // Every route joins the graph at its nearest node, including the first leg.
-      //
-      // This used to drop that node whenever the body already stood closer to the goal than the node
-      // did � a corridor optimisation, and a safe one in a corridor, where "closer to the goal" and
-      // "further along the hall" are the same sentence. They are not the same sentence in a mall: a
-      // demon standing in a storefront is a metre nearer the shop across the concourse than the aisle
-      // node outside its own door is, so the node that would have walked it out of the shop was
-      // discarded and the leg became a straight line through the shopfront glass. Walking a couple of
-      // metres back to a waypoint looks like a demon changing its mind; walking into a wall for the
-      // rest of the round does not.
+      if (space?.blocked) {
+        while (points.length > 1 && reachable(from, points[1], y)) points.shift();
+      }
+      // Shorten only physically clear legs. Distance alone cannot justify skipping the doorway
+      // that connects a shop to the corridor on the other side of its wall.
       return points.map((node) => ({ x: node.x, z: node.z, floor: node.floor }));
     }
 
@@ -190,8 +198,22 @@
       for (const connector of connectors) {
         const bounds = connector.shell && connector.shell.bounds;
         if (!bounds) continue;
-        if (point.x >= bounds.xWest - 0.2 && point.x <= bounds.xEast + 0.2
-          && point.z >= bounds.zMin - 0.2 && point.z <= bounds.zMax + 0.2) return connector;
+        if (point.x < bounds.xWest - 0.2 || point.x > bounds.xEast + 0.2
+          || point.z < bounds.zMin - 0.2 || point.z > bounds.zMax + 0.2) continue;
+        if (!Number.isFinite(point.y) || !connector.layout?.flights) return connector;
+        // A room beneath an upper stair landing is not on the stairs. Check the actual flight
+        // and landing heights before switching to guided vertical pursuit.
+        const { flights, landings = [], entrances = [] } = connector.layout;
+        const onLanding = landings.some(p => Math.abs(point.y - p.y) < .65
+          && Math.abs(point.x - p.x) <= p.w / 2 + .2 && Math.abs(point.z - p.z) <= p.d / 2 + .2);
+        const atEntrance = entrances.some(p => Math.abs(point.y - p.y) < .65 && Math.hypot(point.x - p.x, point.z - p.z) < 1.3);
+        const onFlight = flights.some(f => {
+          const dx = f.endX - f.startX, dz = f.endZ - f.startZ;
+          const t = Math.max(0, Math.min(1, ((point.x - f.startX) * dx + (point.z - f.startZ) * dz) / (dx * dx + dz * dz || 1)));
+          return Math.hypot(point.x - f.startX - dx * t, point.z - f.startZ - dz * t) <= f.width / 2 + .2
+            && Math.abs(point.y - f.startY - (f.endY - f.startY) * t) < .65;
+        });
+        if (onLanding || atEntrance || onFlight) return connector;
       }
       return null;
     }
@@ -202,6 +224,10 @@
     // version of "how do I get there" that should differ between them.
     function planFloorRoute({ from, target, fromFloor, toFloor, floorHeight = 4.6 }) {
       const floorY = (floor) => (floor - 1) * floorHeight;
+      // Low seating tiers are walk surfaces above the storey's datum. Aim at the real surface
+      // so an unguided body can finish its route without sinking or endlessly chasing height.
+      const walkPoint = (point, floor) => ({ x: point.x, z: point.z, floor, guided: false,
+        y: space?.groundAt?.(point.x, point.z, floorY(floor)) ?? floorY(floor) });
       const route = [];
       let cursor = { x: from.x, z: from.z, floor: fromFloor };
       if (fromFloor !== toFloor) {
@@ -210,7 +236,7 @@
           const entryApproach = connector.approaches?.[fromFloor] || connector.approach;
           const exitApproach = connector.approaches?.[toFloor] || connector.approach;
           for (const step of walkRoute(cursor, entryApproach, fromFloor, { y: floorY(fromFloor) })) {
-            route.push({ x: step.x, y: floorY(fromFloor), z: step.z, floor: fromFloor, guided: false });
+            route.push(walkPoint(step, fromFloor));
           }
           route.push(...createStairRoute({
             fromFloor, toFloor, floorHeight, stairLayout: connector.layout, approach: connector.approach, approaches: connector.approaches,
@@ -221,9 +247,9 @@
         }
       }
       for (const step of walkRoute(cursor, target, toFloor, { y: floorY(toFloor) })) {
-        route.push({ x: step.x, y: floorY(toFloor), z: step.z, floor: toFloor, guided: false });
+        route.push(walkPoint(step, toFloor));
       }
-      route.push({ x: target.x, y: floorY(toFloor), z: target.z, floor: toFloor, guided: false });
+      route.push(walkPoint(target, toFloor));
       return route;
     }
 
@@ -299,10 +325,11 @@
     add(entranceFor(firstFloor), firstFloor);
     const transitions = [...new Set(stairLayout.flights.map((flight) => flight.transition))].sort((a, b) => a - b);
     for (const transition of transitions) {
-      const west = stairLayout.flights.find((flight) => flight.transition === transition && flight.lane === 'west');
-      const east = stairLayout.flights.find((flight) => flight.transition === transition && flight.lane === 'east');
+      const lanes = stairLayout.flights.filter((flight) => flight.transition === transition);
+      const west = lanes.find((flight) => flight.lane === 'west') || lanes[0];
+      const east = lanes.find((flight) => flight.lane === 'east' && flight !== west);
       add({ x: west.startX, y: west.startY, z: west.startZ }, transition);
-      add({ x: west.endX, y: west.endY, z: west.endZ }, transition);
+      add({ x: west.endX, y: west.endY, z: west.endZ }, east ? transition : transition + 1);
       if (east) {
         add({ x: east.startX, y: east.startY, z: east.startZ }, transition + 1);
         add({ x: east.endX, y: east.endY, z: east.endZ }, transition + 1);
@@ -377,14 +404,14 @@
     if (!door) return false;
     door.locked = false;
     door.open = true;
-    door.target = (door.side === 'left' ? -1 : 1) * openAngle;
+    door.target = door.openAngle ?? (door.side === 'left' ? -1 : 1) * openAngle;
     return true;
   }
 
   function prepareRoamDoor(door, openAngle = Math.PI / 2) {
     if (!door || door.locked) return false;
     door.open = true;
-    door.target = (door.side === 'left' ? -1 : 1) * openAngle;
+    door.target = door.openAngle ?? (door.side === 'left' ? -1 : 1) * openAngle;
     return true;
   }
 

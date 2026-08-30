@@ -746,11 +746,10 @@
         },
       ],
       // Spread across the whole footprint, which is what lets three demons open apart on two levels.
-      spawnNodes: floorDefs.flatMap((def) => [
-        { floor: def.id, x: -19, z: -18 }, { floor: def.id, x: -19, z: 28 },
-        { floor: def.id, x: 17, z: -18 }, { floor: def.id, x: 17, z: 16 },
-        { floor: def.id, x: 38.75, z: 10 },
-      ]),
+      spawnNodes: [
+        { floor: 1, x: -45.5, z: -25 }, { floor: 1, x: -45.5, z: 28 },
+        { floor: 2, x: -45.5, z: -25 }, { floor: 2, x: 32, z: 29 },
+      ],
       minSpawnSeparation: 26,
     };
 

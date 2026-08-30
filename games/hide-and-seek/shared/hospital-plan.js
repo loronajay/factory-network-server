@@ -510,8 +510,8 @@
         layout:stairLayout,shell:stairShell
       }],
       spawnNodes:[
-        {floor:1,x:-25,z:0},{floor:1,x:0,z:0},{floor:1,x:25,z:0},
-        {floor:2,x:-25,z:0},{floor:2,x:0,z:0},{floor:2,x:25,z:0}
+        {floor:1,x:-25,z:0},{floor:1,x:0,z:27},
+        {floor:2,x:-25,z:-27},{floor:2,x:25,z:0},{floor:2,x:25,z:27}
       ],
       minSpawnSeparation:24
     };
