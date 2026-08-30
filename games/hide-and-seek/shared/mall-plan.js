@@ -211,7 +211,7 @@
         width: clean(width),
         hingeX: clean(alongZ ? fixed : center - width / 2),
         hingeZ: clean(alongZ ? center - width / 2 : fixed),
-        y: 1.06,
+        y: clean(levelY(floor) + 1.06),
         localX: clean(alongZ ? 0 : width / 2),
         localZ: clean(alongZ ? width / 2 : 0),
         w: clean(alongZ ? 0.1 : width),
