@@ -104,15 +104,14 @@ test("a hung hoop is clamped onto the wall, and its motion catalog is the hoop's
   assert.ok(wild.placement.rimY <= HOOP_PLACEMENT_BOUNDS.maxY + 1e-9);
 });
 
-test("a placement validates and preserves its HORSE trick-shot tools", () => {
+test("a placement strips disabled HORSE trick-shot tools", () => {
   const setup = sanitizeHorsePlacement({
     ...STILL_BIN,
     locationId: "warehouse",
     pieces: [{ type: "board", id: "bank-pad", x: 0.4, y: 0.8, z: 0.5, restitution: 0.9 }],
   });
   assert.equal(setup.locationId, "warehouse");
-  assert.equal(setup.pieces.length, 1);
-  assert.equal(setup.pieces[0].id, "bank-pad");
+  assert.equal(setup.pieces.length, 0);
 });
 
 test("only the player whose turn it is may place, and never a matcher", () => {

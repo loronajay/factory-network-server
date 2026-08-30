@@ -11,45 +11,28 @@
 // have to be converted back before it could be added to a sweep. A bin's
 // placement is in world units precisely because its depth IS the choice.
 //
-// THE VOLUME IS THE CABINET'S OWN TRAVEL, MINUS THE SWEEP. `HOOP_TRAVEL_BOUNDS`
-// is the screen box every shipped mode's rim centre already stays inside — the
-// portrait crop horizontally, and the band the classic run has always ridden
-// vertically. Adopting it whole rather than inventing a wider one is what makes
-// a HORSE hoop shot a shot the classic cabinet has already proved makeable, at a
-// height it is already calibrated for; nothing here needs a new number and no
-// existing one moves. A motion's measured envelope is then subtracted from it,
-// exactly as `clampPlacement` subtracts a bin motion's — so choosing Left / Right
-// while parked at the end of the wall steps the hoop in far enough for its whole
-// run to fit, rather than letting half the sweep leave the screen.
-//
-// A CONSEQUENCE WORTH STATING PLAINLY: the busier the motion, the less room
-// there is to hang it. Still has the whole box; Up / Down has four pixels of
-// height and the width of the room. That is not timidity, it is the same
-// arithmetic the bin lives under — the box is the cabinet's own travel, and a
-// mode that already fills it has nowhere left to be moved to.
-//
-// The reticle's reach does not need restating here the way it does for a bin.
-// `AIM_MIN_X..AIM_MAX_X` is 292..668 and the crop stops at 588, so the band a
-// pull can swing across already contains every placement this file will allow —
-// the "you may only place a target you could shoot at" rule is satisfied by
-// construction rather than by a second clamp. `tests/horse.test.js` pins that,
-// because the day the crop or the aim gain moves is the day it stops being free.
+// Placement spans the player's horizontal aim and the wall down toward the
+// floor, rather than borrowing the classic run's narrow motion band. The top
+// keeps the existing ceiling clearance; the bottom leaves room below the rim
+// for the ball to drop through. Each motion's entire sweep must fit this box.
+// Classic runs still use hoopAt without a placed base, so their paths do not move.
 //
 // Pure. No DOM, no storage, no rendering.
 
-import { AIM_MAX_X, AIM_MIN_X, HOOP_BASE_RIM_Y, HOOP_BASE_X } from "./constants.js";
+import { AIM_MAX_X, AIM_MIN_X, BALL_RADIUS_WORLD, HOOP_BASE_RIM_Y, HOOP_BASE_X, RIM_CENTER_Z, RIM_RADIUS_WORLD } from "./constants.js";
 import { DEFAULT_HOOP_MODE, HOOP_TRAVEL_BOUNDS, hoopAt, hoopModeById } from "./hoop.js";
+
+import { projectPoint } from "./projection.js";
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-/**
- * The screen box a placed rim centre must stay inside, sweep included.
- *
- * It IS `HOOP_TRAVEL_BOUNDS` — imported and re-published under this name rather
- * than copied, so there is one statement of the box and a change to the portrait
- * crop moves the placement volume with it.
- */
-export const HOOP_PLACEMENT_BOUNDS = HOOP_TRAVEL_BOUNDS;
+/** Reachable wall area for the rim centre, including its whole motion path. */
+export const HOOP_PLACEMENT_BOUNDS = Object.freeze({
+  minX: AIM_MIN_X,
+  maxX: AIM_MAX_X,
+  minY: HOOP_TRAVEL_BOUNDS.minY,
+  maxY: projectPoint({ x: 0, y: RIM_RADIUS_WORLD + BALL_RADIUS_WORLD, z: RIM_CENTER_Z }).y,
+});
 
 /**
  * A mode's screen-space reach, sampled off its own path.

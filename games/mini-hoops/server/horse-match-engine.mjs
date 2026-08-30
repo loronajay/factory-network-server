@@ -34,7 +34,7 @@ import {
 import { AIM_MAX_X, AIM_MIN_X } from "../shared/scripts/sim/constants.js";
 import { ballById } from "../shared/scripts/assets/ball-catalog.js";
 import { locationById } from "../shared/scripts/assets/location-catalog.js";
-import { normalizeSandboxPieces } from "../shared/scripts/sim/trick-shot.js";
+import { normalizeHorsePieces } from "../shared/scripts/sim/horse.js";
 import { adjudicateHorseShot } from "./horse-adjudicator.mjs";
 
 export const HORSE_GAME_ID = "mini-hoops-horse";
@@ -115,7 +115,7 @@ export function sanitizeHorsePlacement(value = {}) {
       placement: value.placement || value,
     }),
     locationId: locationById(value.locationId || HORSE_FIXED_SETUP.locationId).id,
-    pieces: normalizeSandboxPieces(value.pieces),
+    pieces: normalizeHorsePieces(value.pieces),
   };
 }
 

@@ -16,6 +16,23 @@
 // the only way out from under it is to wait for them to miss a shot of their
 // own making, which is also the one thing they cannot farm.
 
+import { normalizeSandboxPieces } from "./trick-shot.js";
+
+// Temporary Horse restriction. The Lab, saved layouts, and tool implementations
+// remain intact; every Horse entry point shares this rule, including the server.
+export const HORSE_LAB_TOOLS_ENABLED = false;
+
+export function normalizeHorsePieces(pieces) {
+  return HORSE_LAB_TOOLS_ENABLED ? normalizeSandboxPieces(pieces) : [];
+}
+
+function playableSetup(setup) {
+  if (!setup || HORSE_LAB_TOOLS_ENABLED) return setup;
+  if (!setup.pieces?.length && !setup.requiredPieces?.length && !setup.provenPull) return setup;
+  const { provenPull, ...target } = setup;
+  return { ...target, pieces: [], requiredPieces: [] };
+}
+
 export const DEFAULT_WORD = "HORSE";
 
 /**
@@ -129,7 +146,7 @@ export function canPlaceBin(match) {
  * target, not the hand.
  */
 export function shotSetupFor(match, workingSetup) {
-  return match?.phase === PHASE_MATCH ? match.standingShot : workingSetup;
+  return playableSetup(match?.phase === PHASE_MATCH ? match.standingShot : workingSetup);
 }
 
 /**
@@ -155,6 +172,7 @@ export function shotSetupFor(match, workingSetup) {
  * Touch them all and the make stands.
  */
 export function requiredPieceIds(setup) {
+  if (!HORSE_LAB_TOOLS_ENABLED) return [];
   const available = new Set((Array.isArray(setup?.pieces) ? setup.pieces : []).map((piece) => piece?.id));
   const required = Array.isArray(setup?.requiredPieces) ? setup.requiredPieces : [];
   // Intersected with the tools that are really there: a duty naming a piece the
@@ -186,6 +204,7 @@ export function unmetPieceIds(setup, touched = []) {
  * replicated, serialized and reconnected through for nothing.
  */
 export function recordShotDuty(setup, touched = [], pull = null) {
+  if (!HORSE_LAB_TOOLS_ENABLED) return playableSetup(setup);
   if (!setup) return setup;
   const hit = new Set((Array.isArray(touched) ? touched : []).map(String));
   const pieces = Array.isArray(setup.pieces) ? setup.pieces : [];
@@ -251,7 +270,7 @@ export function resolveHorseShot(match, made, setup = null, { unmet = [], touche
     if (made) {
       // The shot is now owed. The matcher shoots next, at exactly this bin.
       match.setter = shooter;
-      match.standingShot = touched ? recordShotDuty(setup, touched, pull) : setup;
+      match.standingShot = touched ? recordShotDuty(setup, touched, pull) : playableSetup(setup);
       match.phase = PHASE_MATCH;
       match.turn = other;
       match.lastOutcome = { shooter, made: true, letter: false, kind: "set" };
@@ -340,7 +359,7 @@ export function cpuMakesHorseShot(difficulty = "medium", random = Math.random) {
  * a shot anybody owes.
  */
 export function cpuSetsTrickShot(difficulty = "medium", random = Math.random) {
-  return random() < (horseDifficultyById(difficulty).trickChance || 0);
+  return HORSE_LAB_TOOLS_ENABLED && random() < (horseDifficultyById(difficulty).trickChance || 0);
 }
 
 /**

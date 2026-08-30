@@ -26,6 +26,7 @@ import { ballById, ballFlight } from "../assets/ball-catalog.js";
 import { PHYSICS_SUBSTEP_SECONDS, TICK_SECONDS } from "./constants.js";
 import { stepBallAgainstBins } from "./bin-physics.js";
 import { createHorseShot, horseTargetAt } from "./horse-shot.js";
+import { normalizeHorsePieces } from "./horse.js";
 import { createBall, isBallSettled, launchBall, stepBall, worldFor } from "./physics.js";
 import { createTrickShotPhysics, stepTrickShotPieces } from "./trick-shot-physics.js";
 
@@ -67,7 +68,7 @@ export function replayHorseShot({
   );
   launchBall(ball, shot.launch);
 
-  const pieces = Array.isArray(setup?.pieces) ? setup.pieces : [];
+  const pieces = normalizeHorsePieces(setup?.pieces);
   const runtime = createTrickShotPhysics();
   const contacts = [];
   const touched = [];

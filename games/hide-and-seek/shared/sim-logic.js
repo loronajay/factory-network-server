@@ -338,7 +338,7 @@
     // Catch resolution, from positions, on the authority side. `canTag` is distance, then height,
     // then line of sight — and the sight test is the same AABB ray the demon uses, so a wall is a
     // wall for everybody.
-    function resolveTags(state) {
+    function resolveTags(state, events = []) {
       const seeker = round.seekerOf(state.round);
       if (!seeker || !seeker.alive || state.round.phase !== round.PHASES.SEEKING) return state.round;
       const seekerBody = bodyOf(state, seeker.id);
@@ -355,6 +355,9 @@
           : false;
         if (!round.canTag({ seeker: seekerBody, hider: hiderBody, occluded }, roundConfig)) continue;
         roundState = round.resolveTag(roundState, { seekerId: seeker.id, hiderId: target.id });
+        // Who was found is round news, not private news: every client narrates it, so the event
+        // names the seat rather than being filtered to the seat it happened to.
+        events.push({ type: 'hider-tagged', playerId: target.id, seekerId: seeker.id });
       }
       return roundState;
     }
@@ -495,7 +498,7 @@
       }
       const ticked = { ...state, tick: state.tick + 1, elapsed: clean(state.elapsed + delta), bodies, fixtures: fixtureState, round: roundAfterClock };
       const hunt = tickDemons(ticked, delta, fixtureState, events);
-      const afterTags = resolveTags({ ...ticked, round: hunt.round });
+      const afterTags = resolveTags({ ...ticked, round: hunt.round }, events);
       let pickups = dropForEliminated(ticked, bodies, state.round, afterTags, ticked.pickups, events);
       const collected = collectPickups(bodies, afterTags, pickups, events);
       return {
