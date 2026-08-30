@@ -28,7 +28,7 @@ export const CONFIG = Object.freeze({
 
 // The anti-camping clock. Tuned so a room is a viable hiding place for a while but never forever,
 // and so walking the length of one corridor is enough to clear a meter you let fill.
-export const SANITY_CONFIG = Object.freeze({
+export const HEAT_CONFIG = Object.freeze({
   fillSeconds: 40,
   hallwayStepDistance: 7,
   roomHalfSize: 4,

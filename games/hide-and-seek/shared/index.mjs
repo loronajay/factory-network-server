@@ -24,7 +24,7 @@ import "./cinema-plan.js";
 import "./movement-logic.js";
 import "./round-logic.js";
 import "./stamina-logic.js";
-import "./sanity-logic.js";
+import "./heat-logic.js";
 import "./flashlight-logic.js";
 import "./enemy-logic.js";
 import "./fixtures-logic.js";
@@ -36,7 +36,7 @@ export {
   FLOOR_DEFS,
   FLASHLIGHT_CONFIG,
   ROUND_CONFIG,
-  SANITY_CONFIG,
+  HEAT_CONFIG,
   STAMINA_CONFIG,
   floorY,
   keyIdForFloor,
@@ -53,13 +53,13 @@ export const collision = globalThis.HotelCollision;
 export const movement = globalThis.HotelMovement;
 export const round = globalThis.HotelRound;
 export const stamina = globalThis.HotelStamina;
-export const sanity = globalThis.HotelSanity;
+export const heat = globalThis.HotelHeat;
 export const flashlight = globalThis.HotelFlashlight;
 export const enemy = globalThis.HotelEnemyLogic;
 export const fixtures = globalThis.HotelFixtures;
 export const demon = globalThis.HotelDemon;
 export const sim = globalThis.HotelSim;
 
-for (const [name, api] of Object.entries({ maps, layout, plan, mallPlan, hospitalPlan, cinemaPlan, collision, movement, round, stamina, sanity, flashlight, enemy, fixtures, demon, sim })) {
+for (const [name, api] of Object.entries({ maps, layout, plan, mallPlan, hospitalPlan, cinemaPlan, collision, movement, round, stamina, heat, flashlight, enemy, fixtures, demon, sim })) {
   if (!api) throw new Error(`Hide and Seek shared module "${name}" failed to load`);
 }

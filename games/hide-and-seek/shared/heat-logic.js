@@ -1,11 +1,11 @@
-(function attachHotelSanity(root, factory) {
+(function attachHotelHeat(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
-  if (root) root.HotelSanity = api;
-})(typeof window !== 'undefined' ? window : globalThis, function createHotelSanityApi() {
+  if (root) root.HotelHeat = api;
+})(typeof window !== 'undefined' ? window : globalThis, function createHotelHeatApi() {
   'use strict';
 
-  // Sanity is the anti-camping clock. It fills whenever a player stays put in one place, and the
+  // Heat is the anti-camping clock. It fills whenever a player stays put in one place, and the
   // demon reads it: a full meter is an invitation. Leaving the room you are in resets it, and so do
   // steps taken in the hallway — the only way to keep it low is to keep moving through the hotel.
   const HALLWAY = 'hallway';
@@ -15,7 +15,7 @@
   // passages are the one genuine refuge in the hotel, and they cost you the walk to reach one.
   const ZONE_KINDS = Object.freeze({ ROOM: 'room', HALLWAY: 'hallway', TUNNEL: 'tunnel' });
 
-  const SANITY_DEFAULTS = Object.freeze({
+  const HEAT_DEFAULTS = Object.freeze({
     fillSeconds: 42,
     // How far you have to walk in a corridor before the meter forgets you were ever standing still.
     hallwayStepDistance: 6,
@@ -30,7 +30,7 @@
   });
 
   function settings(config) {
-    return config ? { ...SANITY_DEFAULTS, ...config } : SANITY_DEFAULTS;
+    return config ? { ...HEAT_DEFAULTS, ...config } : HEAT_DEFAULTS;
   }
 
   function zoneKindOf(zone) {
@@ -69,7 +69,7 @@
     return hallway;
   }
 
-  function createSanityState() {
+  function createHeatState() {
     return { zone: null, kind: ZONE_KINDS.HALLWAY, seconds: 0, value: 0, hallwayDistance: 0, full: false, reset: null };
   }
 
@@ -77,7 +77,7 @@
     return { zone, kind, seconds: 0, value: 0, hallwayDistance: 0, full: false, reset: reason };
   }
 
-  function updateSanity(previous, { zone, kind, delta = 0, movedDistance = 0, config } = {}) {
+  function updateHeat(previous, { zone, kind, delta = 0, movedDistance = 0, config } = {}) {
     const cfg = settings(config);
     const zoneKind = kindFromZoneId(kind, zone);
     // A zone change wipes the meter and the tick that carried the player out of the room; the very
@@ -109,15 +109,15 @@
     };
   }
 
-  function createPlayerSanity(position = {}) {
-    return { meter: createSanityState(), lastX: position.x || 0, lastZ: position.z || 0, candidate: null };
+  function createPlayerHeat(position = {}) {
+    return { meter: createHeatState(), lastX: position.x || 0, lastZ: position.z || 0, candidate: null };
   }
 
-  function updatePlayerSanity(previous, player, zones, delta, config) {
-    const tracker = previous || createPlayerSanity(player);
+  function updatePlayerHeat(previous, player, zones, delta, config) {
+    const tracker = previous || createPlayerHeat(player);
     const zone = locateZone(zones, player, config);
     const movedDistance = Math.hypot(player.x - tracker.lastX, player.z - tracker.lastZ);
-    const meter = updateSanity(tracker.meter, { zone: zone.id, kind: zone.kind, delta, movedDistance, config });
+    const meter = updateHeat(tracker.meter, { zone: zone.id, kind: zone.kind, delta, movedDistance, config });
     return {
       meter,
       lastX: player.x,
@@ -148,5 +148,5 @@
     return best;
   }
 
-  return { HALLWAY, SANITY_DEFAULTS, ZONE_KINDS, createPlayerSanity, createSanityState, huntDistance, locateZone, selectHuntTarget, updatePlayerSanity, updateSanity };
+  return { HALLWAY, HEAT_DEFAULTS, ZONE_KINDS, createPlayerHeat, createHeatState, huntDistance, locateZone, selectHuntTarget, updatePlayerHeat, updateHeat };
 });

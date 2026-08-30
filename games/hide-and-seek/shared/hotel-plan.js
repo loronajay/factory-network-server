@@ -211,7 +211,7 @@
       slab(floor, baseY, x, centerZ, 2.55, depth, material);
       groundRect(floor, baseY, x, centerZ, 2.55, depth);
       ceiling(floor, baseY, x, centerZ, 2.55, depth, 2.55);
-      // Published so the sanity meter can tell a passage from a corridor: a tunnel drains the meter.
+      // Published so the heat meter can tell a passage from a corridor: a tunnel drains the meter.
       secretTunnels.push({ id: `${roomA}-${roomB}-tunnel`, kind: 'tunnel', floor: def.id, minX: x - 1.275, maxX: x + 1.275, minZ, maxZ });
 
       wall(floor, baseY, a.side === 'left' ? -14.5 : 14.5, centerZ, 0.18, depth, 2.55, 'dark');

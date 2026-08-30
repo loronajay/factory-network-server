@@ -36,12 +36,41 @@
     return { ...state, charge: normalizeCharge(state.charge + Math.max(0, Number(amount) || 0)) };
   }
 
+  // A press is the player's, the battery is the server's.
+  //
+  // Online the local light used to be overwritten with `self.flashlight` out of every snapshot, and a
+  // snapshot is a round trip old: pressing F flipped the light on, the next frame mirrored the stale
+  // "off" back over it, and the input that finally went out said off again. The toggle only survived
+  // when the timing happened to line up, which is exactly what a player reports as "F only works
+  // sometimes". So an online toggle records an *intent* that outlives the round trip. It is held
+  // until the authority agrees with it, until the authority refuses it (an empty battery cannot be
+  // switched on), or until the grace runs out — never longer, because a client that ignores the
+  // server forever is the same class of bug one level up.
+  const INTENT_GRACE_MS = 1500;
+
+  function createFlashlightIntent(on, now = 0, graceMs = INTENT_GRACE_MS) {
+    return { on: !!on, until: (Number(now) || 0) + graceMs };
+  }
+
+  // Returns the state to display and the intent still outstanding (`null` once it has settled). The
+  // charge is always the authority's; only `on` is ever held locally.
+  function reconcileFlashlight(remote, intent = null, now = 0) {
+    const authoritative = describeFlashlight(remote);
+    if (!intent) return { state: createFlashlightState(authoritative.on, authoritative.charge), intent: null };
+    const settled = authoritative.on === intent.on
+      || authoritative.charge <= 0
+      || (Number(now) || 0) >= intent.until;
+    if (settled) return { state: createFlashlightState(authoritative.on, authoritative.charge), intent: null };
+    return { state: createFlashlightState(intent.on, authoritative.charge), intent };
+  }
+
   function createFlashlightDrop(state) {
     return { charge: normalizeCharge(state?.charge) };
   }
 
   return {
-    addFlashlightCharge, createFlashlightDrop, createFlashlightState, describeFlashlight,
-    setFlashlight, tickFlashlight, toggleFlashlight,
+    INTENT_GRACE_MS,
+    addFlashlightCharge, createFlashlightDrop, createFlashlightIntent, createFlashlightState,
+    describeFlashlight, reconcileFlashlight, setFlashlight, tickFlashlight, toggleFlashlight,
   };
 });

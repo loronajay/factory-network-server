@@ -105,7 +105,7 @@
     return navigator;
   }
 
-  // `hunts` is what separates The Bellhop from The Housekeeper: only one demon reads the sanity
+  // `hunts` is what separates The Bellhop from The Housekeeper: only one demon reads the heat
   // meter, deliberately, so the anti-camping rule reads as one stalker rather than a swarm.
   function createDemon({ id, name = 'The Bellhop', spawn, hunts = false } = {}) {
     return {
@@ -150,20 +150,8 @@
     const fromFloor = nearestFloor(demon.y, cfg);
     const toFloor = target.floor || nearestFloor(target.y, cfg);
 
-    if (target.inStairwell) {
-      const connector = navigator.connectorContaining(target) || navigator.connectorBetween(fromFloor, toFloor, demon);
-      const route = connector ? ctx.enemy.createStairPursuitRoute({
-        enemy: { x: demon.x, y: demon.y, z: demon.z, floor: fromFloor, inStairwell: isInStairwell(demon, ctx) },
-        target,
-        floorHeight: cfg.floorHeight,
-        stairLayout: connector.layout,
-        approach: connector.approach, approaches: connector.approaches,
-      }) : [];
-      return { ...demon, route, routePurpose: purpose };
-    }
-
     const route = navigator.planFloorRoute({
-      from: { x: demon.x, z: demon.z }, target, fromFloor, toFloor, floorHeight: cfg.floorHeight,
+      from: { x: demon.x, y: demon.y, z: demon.z }, target, fromFloor, toFloor, floorHeight: cfg.floorHeight,
     });
     return { ...demon, route, routePurpose: purpose };
   }
@@ -260,7 +248,7 @@
     return next;
   }
 
-  // The sanity hunt. A player who has been still long enough stops being hidden: the demon walks to
+  // The heat hunt. A player who has been still long enough stops being hidden: the demon walks to
   // the room they are camping in and prowls it until they move (which resets their meter and calls it
   // off) or it sees them (which is a chase, and chase always wins). It only fires from ROAM — an
   // active search is a fresher lead, and stacking the two would double-plan the route.
@@ -274,10 +262,10 @@
       return demon;
     }
     const cfg = ctx.config;
-    const target = ctx.sanity.selectHuntTarget(
+    const target = ctx.heat.selectHuntTarget(
       ctx.huntCandidates,
       { x: demon.x, z: demon.z, floor: nearestFloor(demon.y, cfg) },
-      ctx.sanityConfig,
+      ctx.heatConfig,
     );
     if (!target) {
       if (!demon.huntZone) return demon;
@@ -290,7 +278,7 @@
       ctx.openDoor(target.zone, { unlock: true });
       const planned = planRoute(demon, { x: target.x, y: floorYOf(target.floor, cfg), z: target.z, floor: target.floor }, 'hunt', ctx);
       ctx.setHunted(target);
-      ctx.emit({ type: 'sanity-hunt', demon: demon.name, id: target.id, zone: target.zone, floor: target.floor });
+      ctx.emit({ type: 'heat-hunt', demon: demon.name, id: target.id, zone: target.zone, floor: target.floor });
       return { ...planned, huntZone: target.zone, huntTargetId: target.id };
     }
     if (!demon.route.length) {
@@ -365,16 +353,14 @@
     if (step.arrived) {
       return { ...demon, x: round6(step.x), y: round6(step.y), z: round6(step.z), route: demon.route.slice(1), moving: false, avoidance: null };
     }
-    // Wedged. The offline hiders and the CPU seeker both give a waypoint up when the mover reports
-    // the way solid, and a demon has to do the same: without it a leg that cannot be walked is
-    // retried at sixty hertz forever, and a hunter standing in a doorway for the rest of the round
-    // is worse than one that takes a wrong turn.
+    // A blocked entry invalidates its whole suffix. Skipping only that entry can promote a
+    // guided flight while the body is still outside the stairwell.
     if (!step.moved) {
       return {
         ...demon,
         moving: false,
         avoidance: step.avoidance || null,
-        route: step.blocked ? demon.route.slice(1) : demon.route,
+        route: step.blocked ? [] : demon.route,
       };
     }
     const turn = Math.min(1, delta * cfg.turnRate);

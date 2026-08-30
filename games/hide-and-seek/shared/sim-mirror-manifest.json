@@ -1,23 +1,23 @@
 {
   "generator": "games/hide-and-seek/tools/mirror-sim.mjs",
   "files": {
-    "modules/game-config.js": "b1658a09821494e670cf687ccd223db7abd07ccf949ec31356bc2661d332f91e",
-    "map-catalog.js": "6d254555279e59ad2cf2a9083584163aaa26b2aab1836c1c4056ca0f40aaf44f",
+    "modules/game-config.js": "89726e0e12017d62a4a96eff1616cc1bd3db96a4023f9b0da1e7f0c21ed72473",
+    "map-catalog.js": "58f3082cba63489c39073b51e7a0f800c7c9933a8ba323b987ed7424bdb42f90",
     "layout.js": "b9d516d224f6f91f1af4848c34ecafe09dcaac62ead54a436326e3c9ebb232df",
-    "hotel-plan.js": "4f1125544b69c832f56f453d3bb5efdac34017d25212fc8fb29b7a2fea57f207",
-    "mall-plan.js": "f39845b6795fa6ff02e8f265ec7bb363643d948f2aa2c59d4ded556c86d97f46",
+    "hotel-plan.js": "602e707c431fe066501c1aeb21dc777e59000bea409aef6e374cf3860ec3121f",
+    "mall-plan.js": "790a58fc714c9fff0841ec2052f51fddf7d55d53c4fa12044106ac5049b1f117",
     "hospital-plan.js": "409ebbccd29339b92704a5993297dbd4653a3096c4309363c809c518ec96d7f4",
     "cinema-plan.js": "8b12ce38b0db523aa17e9cff1091426dcb1ade63d1023f5a76f1e22b89e943f9",
     "cinema-navigation.js": "5d3af88013c3517f31af8708c8a30ee99a1992e702b52d72297f4766e84c7b15",
     "collision-logic.js": "c3c4f1ba3c04ca2d19bfa49ad1fc18be2cb785e6ed3a769e56053d5a3643df8b",
-    "movement-logic.js": "1f53657f71badb3daf0dff0e7c71c657ed6ae2920d222b6fc680f93698bf1132",
+    "movement-logic.js": "8d562357bf49e3c79bd68e310576373711379afc4cde462180870b4beb4cdadb",
     "round-logic.js": "ef39ca22b4e01be24540abaed9b0b79723ffec2487b885aa97ad3bbc9cdc05d3",
     "stamina-logic.js": "3363b78186b34453892763e8d8931ad9b403c02d3f5d7d3356ce350feabf645e",
-    "sanity-logic.js": "a61fa9d57bb9441305690fc997ddcac88752a3b35b1404968ddcc9ea1cb5b557",
-    "flashlight-logic.js": "30a8eccafa7914e752c04551eb17881e51266b873c396623ce217b1d9cd0c12b",
-    "enemy-logic.js": "59ae12bc3646c2564510b37f7e39e3ea69ac2b0f40e7066ef236d179bbf97f04",
+    "heat-logic.js": "eb102af4678ecf2c97766f23ddf2d4c6a8a307283ad611a4f2940e00e6bd317b",
+    "flashlight-logic.js": "9cc0ed377a63a219f23d3eae3915e230ad98747eaa06d97efd63361e9294b760",
+    "enemy-logic.js": "6ab9fe309d8b9c4af6a35101b6a93224ddadb7142461a4e7683c655852c87817",
     "fixtures-logic.js": "1598bf8c6a3a506a12b34b2cbe27ce0739fb9efe89913146b9a2cb02b0c5e5d1",
-    "demon-logic.js": "3ac647ad03c8bb85ccfa24d339051c32eb9ef393755140305f822d253033f0a2",
-    "sim-logic.js": "05d8994cfcc5afa04169bddbfa74e134305a51a88f688b6025eed43e27562b14"
+    "demon-logic.js": "5bd13ddd4968150ac252aa3f924e887ae7f3072fcaf0909ddcc653f8ed6b0142",
+    "sim-logic.js": "eab978ea499a1ee6a6627460226584f05c4c102ad84bcf80407862494bdff658"
   }
 }

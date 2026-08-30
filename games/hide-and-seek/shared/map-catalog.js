@@ -18,7 +18,7 @@
   //
   //   * where its geometry comes from — a plan factory named by the global it attaches to, so a new
   //     location is a new pure file plus a row here and nothing else;
-  //   * how tall it is — `floorCount`, which the demon navigation, the stair layout and the sanity
+  //   * how tall it is — `floorCount`, which the demon navigation, the stair layout and the heat
   //     floor lookup all read instead of assuming four;
   //   * who hunts in it — the demon roster, which is per map and any length. Two was never a rule,
   //     it was just how many the hotel had.
@@ -34,7 +34,7 @@
     SOON: 'soon',
   });
 
-  // Exactly one demon per map reads the sanity meter. The anti-camping rule has to read as one
+  // Exactly one demon per map reads the heat meter. The anti-camping rule has to read as one
   // stalker walking to the room you would not leave; two of them converging on the same full bar is
   // a swarm, and a swarm is not a threat you can learn.
   const HOTEL_DEMONS = Object.freeze([

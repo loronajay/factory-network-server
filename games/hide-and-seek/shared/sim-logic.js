@@ -9,7 +9,7 @@
   //
   // Everything a round is made of already lives in the pure layer — the building in `hotel-plan.js`,
   // walking in `movement-logic.js`, the clock and both endings in `round-logic.js`, the meters in
-  // `stamina-logic.js` / `sanity-logic.js` / `flashlight-logic.js`, the doors and the lift in
+  // `stamina-logic.js` / `heat-logic.js` / `flashlight-logic.js`, the doors and the lift in
   // `fixtures-logic.js`, and the hunt in `demon-logic.js`. This file is the one place they are ticked
   // together, so the same simulation runs in the browser and on the server with no renderer in either.
   //
@@ -131,14 +131,14 @@
   }
 
   function createSimulation({
-    movement, round, stamina, flashlight, sanity, fixtures, demon: demonLogic, enemy, layout,
+    movement, round, stamina, flashlight, heat, fixtures, demon: demonLogic, enemy, layout,
     collision, space, plan: hotel, zones = [], config = {}, random = Math.random,
   } = {}) {
     const player = { ...PLAYER_DEFAULTS, ...(config.player || {}) };
     const roundConfig = config.round;
     const flashlightConfig = config.flashlight;
     const staminaConfig = config.stamina;
-    const sanityConfig = config.sanity;
+    const heatConfig = config.heat;
     // Where the lift is belongs to the building, not to the player's tuning. A plan that predates
     // the field falls back on the hotel's numbers so an older fixture still stands a round up.
     const shaft = (hotel && hotel.elevator) || {
@@ -179,7 +179,7 @@
 
     function setZones(next) { zoneList = next || []; }
 
-    // Which space a body is standing in, for the sanity meter and for the HUD. Floor 0 is "between
+    // Which space a body is standing in, for the heat meter and for the HUD. Floor 0 is "between
     // floors" — a stairwell or a moving cabin — and is never a room, so a camper cannot bank a meter
     // by standing on a landing.
     function floorOf(entry, lift) {
@@ -208,7 +208,7 @@
         interacting: false,
         stamina: stamina.createStaminaState(),
         flashlight: flashlight.createFlashlightState(false, 1),
-        sanity: sanity.createPlayerSanity(entry.spawn),
+        heat: heat.createPlayerHeat(entry.spawn),
       }));
       let fixtureState = fixtures ? fixtures.createFixtureState(catalog) : null;
       // The head start is physical from the first tick: the cabin is shut with the seeker inside it.
@@ -223,7 +223,7 @@
     // Separation is a distance rather than a floor each, because Cinder Mall carries three demons on
     // two levels and a floor each has no answer there — see `chooseDemonSpawn`.
     //
-    // Only one demon in a roster reads the sanity meter (`hunts`), and the catalog is where that is
+    // Only one demon in a roster reads the heat meter (`hunts`), and the catalog is where that is
     // decided — two camper-hunters would converge on the same full bar and read as a swarm.
     function createDemons(bodies, roundState) {
       if (!demonLogic || !enemy) return [];
@@ -294,7 +294,7 @@
         interacting: command.interact,
         stamina: staminaState,
         flashlight: lit,
-        sanity: sanity.updatePlayerSanity(entry.sanity, pose, zoneList, delta, sanityConfig),
+        heat: heat.updatePlayerHeat(entry.heat, pose, zoneList, delta, heatConfig),
       };
     }
 
@@ -357,12 +357,12 @@
       }));
       const huntCandidates = livingBodies(state).map((entry) => ({
         id: entry.id, x: entry.x, z: entry.z, floor: entry.floor,
-        zone: entry.sanity.meter.zone, kind: entry.sanity.meter.kind, full: entry.sanity.meter.full,
+        zone: entry.heat.meter.zone, kind: entry.heat.meter.kind, full: entry.heat.meter.full,
       }));
       let doors = fixtureState;
       const hunted = new Set();
       const ctx = {
-        space, movement, enemy, sanity, sanityConfig, random,
+        space, movement, enemy, heat, heatConfig, random,
         candidates, huntCandidates, rooms, navigation, navigator, config: demonConfig,
         // A room with no door is open, not shut. While the hotel was the only building every room
         // had a leaf, so "no door record" could only mean a bad room number and answering `locked`
@@ -503,7 +503,7 @@
         moving: entry.moving,
         flashlight: flashlight.describeFlashlight(entry.flashlight),
         stamina: { value: clean(entry.stamina.value), sprinting: entry.stamina.sprinting, exhausted: entry.stamina.exhausted },
-        sanity: { value: clean(entry.sanity.meter.value), full: entry.sanity.meter.full },
+        heat: { value: clean(entry.heat.meter.value), full: entry.heat.meter.full },
         hunted: Array.isArray(state.hunted) && state.hunted.includes(entry.id),
         keys: state.fixtures ? fixtures.keysOf(state.fixtures, entry.id) : [],
       };

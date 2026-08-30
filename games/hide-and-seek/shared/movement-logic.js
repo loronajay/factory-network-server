@@ -50,16 +50,23 @@
     const dz = target.z - from.z;
     const distance = Math.hypot(dx, dy, dz);
     if (distance < arriveRadius || distance === 0) {
-      return { x: target.x, y: target.y, z: target.z, moved: false, arrived: true, blocked: false, avoidance: null, dirX: 0, dirY: 0, dirZ: 0 };
+      const landing = guided
+        ? (!space.blocked(target.x, target.z, target.y, body.height, body.radius) ? target : null)
+        : attemptStep(space, body, from, target.x, target.z);
+      if (landing) return { x: landing.x, y: landing.y, z: landing.z, moved: false, arrived: true, blocked: false, avoidance: null, dirX: 0, dirY: 0, dirZ: 0 };
+      if (distance === 0) return { ...from, moved: false, arrived: false, blocked: true, avoidance: null, dirX: 0, dirY: 0, dirZ: 0 };
     }
     const dirX = dx / distance; const dirY = dy / distance; const dirZ = dz / distance;
     const amount = Math.min(distance, speed * delta);
     const facing = { dirX, dirY, dirZ, arrived: false };
     if (!amount) return { x: from.x, y: from.y, z: from.z, moved: false, blocked: false, avoidance, ...facing };
-    // Stair flights and the elevator carry a body along a path the walk surfaces cannot describe, so
-    // a guided waypoint is followed literally — including its vertical component.
+    // Guidance supplies the stair altitude, never permission to pass through solid geometry.
     if (guided) {
-      return { x: from.x + dirX * amount, y: from.y + dirY * amount, z: from.z + dirZ * amount, moved: true, blocked: false, avoidance: null, ...facing };
+      const next = { x: from.x + dirX * amount, y: from.y + dirY * amount, z: from.z + dirZ * amount };
+      if (space.blocked(next.x, next.z, next.y, body.height, body.radius)) {
+        return { x: from.x, y: from.y, z: from.z, moved: false, blocked: true, avoidance: null, ...facing };
+      }
+      return { ...next, moved: true, blocked: false, avoidance: null, ...facing };
     }
     const direct = attemptStep(space, body, from, from.x + dirX * amount, from.z + dirZ * amount);
     if (direct) return { ...direct, moved: true, blocked: false, avoidance: null, ...facing };

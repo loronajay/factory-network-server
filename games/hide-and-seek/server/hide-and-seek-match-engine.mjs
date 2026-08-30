@@ -9,9 +9,9 @@
 // live in the mirrored `demon-logic.js`, and the doors they walk through in `fixtures-logic.js`, so
 // the hotel a client draws and the hotel this server adjudicates are the same building.
 import {
-  CONFIG, FLOOR_DEFS, FLASHLIGHT_CONFIG, ROUND_CONFIG, SANITY_CONFIG, STAMINA_CONFIG,
+  CONFIG, FLOOR_DEFS, FLASHLIGHT_CONFIG, ROUND_CONFIG, HEAT_CONFIG, STAMINA_CONFIG,
   floorY, keyIdForFloor, keyLabelForFloor,
-  collision, demon, enemy, fixtures, layout, maps, movement, plan, round, sanity, sim, stamina, flashlight,
+  collision, demon, enemy, fixtures, layout, maps, movement, plan, round, heat, sim, stamina, flashlight,
 } from "../shared/index.mjs";
 
 export const HIDE_AND_SEEK_GAME_ID = "hide-and-seek";
@@ -50,10 +50,10 @@ export function hideAndSeekMapId(lobby) {
   return maps.playableMapId(lobby?.settings?.mapId);
 }
 
-function sanityZones(hotel) {
+function heatZones(hotel) {
   return [
     ...hotel.roomCenters.map((room) => ({
-      id: room.roomNumber, kind: sanity.ZONE_KINDS.ROOM, floor: room.floor, x: room.x, z: room.z,
+      id: room.roomNumber, kind: heat.ZONE_KINDS.ROOM, floor: room.floor, x: room.x, z: room.z,
     })),
     ...hotel.secretTunnels,
   ];
@@ -125,8 +125,8 @@ export function createHideAndSeekMatchState(lobby, startAt) {
   const seekerId = chooseSeeker(memberIds, seed);
   const space = sim.createPlanSpace({ plan, collision, hotel, config: CONFIG });
   const engine = sim.createSimulation({
-    movement, round, stamina, flashlight, sanity, fixtures, demon, enemy, layout,
-    space, plan: hotel, zones: sanityZones(hotel), random: seededRandom(seed),
+    movement, round, stamina, flashlight, heat, fixtures, demon, enemy, layout,
+    space, plan: hotel, zones: heatZones(hotel), random: seededRandom(seed),
     config: {
       // The map's demons, however many it has. Two was the hotel's number, not a rule — the roster
       // is the catalog's answer and this tick spawns, walks and catches for all of them.
@@ -134,7 +134,7 @@ export function createHideAndSeekMatchState(lobby, startAt) {
       player: { ...CONFIG, floorCount: maps.floorCountFor(mapId) },
       round: ROUND_CONFIG,
       stamina: STAMINA_CONFIG,
-      sanity: SANITY_CONFIG,
+      heat: HEAT_CONFIG,
       flashlight: FLASHLIGHT_CONFIG,
       fixtures: CONFIG,
       demon: CONFIG,

@@ -229,7 +229,32 @@
       const walkPoint = (point, floor) => ({ x: point.x, z: point.z, floor, guided: false,
         y: space?.groundAt?.(point.x, point.z, floorY(floor)) ?? floorY(floor) });
       const route = [];
-      let cursor = { x: from.x, z: from.z, floor: fromFloor };
+      let cursor = { x: from.x, y: from.y ?? floorY(fromFloor), z: from.z, floor: fromFloor };
+      const destination = { ...target, y: target.y ?? floorY(toFloor) };
+      let sourceConnector = connectorContaining(cursor);
+      const targetConnector = connectorContaining(destination);
+      // A replan can occur at any height, including a chase changing into a search mid-flight.
+      // First leave the current connector along its spine; a rounded floor is not an exit.
+      if (sourceConnector && sourceConnector !== targetConnector) {
+        const exitFloor = sourceConnector.floors.includes(toFloor) ? toFloor : fromFloor;
+        const entrance = sourceConnector.layout.entrances.find(p => p.floor === exitFloor);
+        route.push(...createStairPursuitRoute({ enemy: { ...cursor, inStairwell: true }, target: entrance,
+          floorHeight, stairLayout: sourceConnector.layout, approach: sourceConnector.approach, approaches: sourceConnector.approaches }));
+        const exit = sourceConnector.approaches?.[exitFloor] || sourceConnector.approach;
+        route.push(walkPoint(exit, exitFloor));
+        cursor = { ...exit, y: floorY(exitFloor), floor: exitFloor };
+        fromFloor = exitFloor;
+        sourceConnector = null;
+      }
+      if (targetConnector && (!sourceConnector || sourceConnector === targetConnector)) {
+        if (!sourceConnector) {
+          const entry = targetConnector.approaches?.[fromFloor] || targetConnector.approach;
+          for (const step of walkRoute(cursor, entry, fromFloor, { y: cursor.y })) route.push(walkPoint(step, fromFloor));
+        }
+        route.push(...createStairPursuitRoute({ enemy: { ...cursor, inStairwell: !!sourceConnector }, target: destination,
+          floorHeight, stairLayout: targetConnector.layout, approach: targetConnector.approach, approaches: targetConnector.approaches }));
+        return route;
+      }
       if (fromFloor !== toFloor) {
         const connector = connectorBetween(fromFloor, toFloor, from);
         if (connector) {
@@ -243,7 +268,7 @@
           }));
           cursor = { x: exitApproach.x, z: exitApproach.z, floor: toFloor };
         } else {
-          cursor = { x: from.x, z: from.z, floor: toFloor };
+          return [];
         }
       }
       for (const step of walkRoute(cursor, target, toFloor, { y: floorY(toFloor) })) {
@@ -314,7 +339,25 @@
 
     addEntrance(toFloor);
     route.push(point(exitApproach.x, floorY(toFloor), exitApproach.z, toFloor, false, false));
-    return route;
+    return squareLandingJoins(route, stairLayout);
+  }
+
+  // Landing exits are doorway crossings. A diagonal from the flight to the door can fit a
+  // player but catch a wider demon on the jamb; square up inside the landing first.
+  function squareLandingJoins(points, stairLayout) {
+    const result = [];
+    const isEntrance = p => stairLayout.entrances.some(e => e.x === p.x && e.y === p.y && e.z === p.z);
+    for (const point of points) {
+      const previous = result.at(-1);
+      if (previous && previous.guided !== false && point.guided !== false
+        && previous.y === point.y && previous.x !== point.x && previous.z !== point.z
+        && (isEntrance(previous) || isEntrance(point))) {
+        result.push({ ...previous, x: isEntrance(previous) ? point.x : previous.x,
+          z: isEntrance(previous) ? previous.z : point.z });
+      }
+      result.push(point);
+    }
+    return result;
   }
 
   function stairSpine(stairLayout) {
@@ -336,7 +379,7 @@
       }
       add(entranceFor(transition + 1), transition + 1);
     }
-    return nodes;
+    return squareLandingJoins(nodes, stairLayout);
   }
 
   function projectToSpine(point, nodes) {

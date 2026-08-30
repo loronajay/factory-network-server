@@ -25,7 +25,7 @@
   // twenty shop entrances, shop-specific interiors and south lift; game-owned doors, keys and
   // navigation are layered onto that architecture. North/south below use world +Z/-Z respectively.
   //
-  // Sanity zones fall out of the same records: every store is a `room` (fills the meter, can be
+  // Heat zones fall out of the same records: every store is a `room` (fills the meter, can be
   // hunted), the concourse is hallway by omission, and the two service corridors are `tunnel`, which
   // drains it.
 
@@ -365,10 +365,10 @@
       pointLight({ floor, x: cx, z: cz, localY: 2.7, color: 0x8a1010, intensity: 0.5, distance: 11 });
     }
 
-    // --- service corridors (the sanity drains) ---------------------------------------------------
+    // --- service corridors (the heat drains) ---------------------------------------------------
 
     // Behind the ground anchor store, and behind the upper cinema. Both are `tunnel` zones: standing
-    // in one drains the sanity meter, which is what makes a back-of-house route worth knowing.
+    // in one drains the heat meter, which is what makes a back-of-house route worth knowing.
     splitWall({
       floor: 1, axis: 'z', fixed: -43.5, from: -24, to: 26,
       openings: [{ center: -9, width: 1.6 }, { center: 18, width: 1.6 }], material: 'dark',
