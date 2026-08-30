@@ -24,6 +24,10 @@
     // Detection is expensive (a sight ray per candidate), so it runs on its own slower clock. The
     // demon still *moves* every tick; it just does not re-look every tick.
     detectionInterval: 0.085,
+    // Once a chase starts, the demon keeps track of a nearby target it can still see even while its
+    // body turns through a doorway or around a corner. The normal forward cone still gates the
+    // initial sighting; this is short-range chase awareness, not eyes in the back of its head.
+    chaseAwarenessDistance: 10,
     replanInterval: 0.65,
     arriveRadius: 0.18,
     turnRate: 7,
@@ -153,7 +157,17 @@
     next.detectionCooldown = cfg.detectionInterval;
     const candidates = ctx.candidates;
     const eye = { x: next.x, y: next.y, z: next.z, facingX: next.facingX, facingZ: next.facingZ };
-    const visible = ctx.enemy.selectDetectedTarget(candidates, eye, { isOccluded: (target) => sightBlockedTo(next, target, ctx) });
+    let visible = ctx.enemy.selectDetectedTarget(candidates, eye, { isOccluded: (target) => sightBlockedTo(next, target, ctx) });
+    if (!visible && next.awareness.state === ctx.enemy.ENEMY_STATES.CHASE && next.awareness.targetId) {
+      const tracked = candidates.find((candidate) => candidate.id === next.awareness.targetId);
+      if (tracked && ctx.enemy.canDetectPlayer({
+        enemy: eye,
+        player: tracked,
+        occluded: sightBlockedTo(next, tracked, ctx),
+        maxDistance: cfg.chaseAwarenessDistance,
+        fieldOfView: Math.PI * 2,
+      })) visible = tracked;
+    }
     next.detectedTargetId = visible ? visible.id : null;
     const seen = visible ? { ...visible, inStairwell: isInStairwell(visible, ctx.stairShell) } : null;
     const remembered = !visible && next.awareness.targetId

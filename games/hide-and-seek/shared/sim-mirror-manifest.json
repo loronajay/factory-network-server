@@ -1,7 +1,7 @@
 {
   "generator": "games/hide-and-seek/tools/mirror-sim.mjs",
   "files": {
-    "modules/game-config.js": "d1cc254c5e5d6e47643633e0d0d4799d92b5cdfc6eaf6815bcff9ead14676e0c",
+    "modules/game-config.js": "b1658a09821494e670cf687ccd223db7abd07ccf949ec31356bc2661d332f91e",
     "layout.js": "b1a286ba4b217564c83147bda375e65f480ec0a588f16fac8b330f48c50625c9",
     "hotel-plan.js": "e95d6031e9d6203521eb68c3caa97c1a448ef880252316ab874e6e95631e4127",
     "collision-logic.js": "5f0030019bbdb9482edb61567d87408e28cad8080f43ce1c80adb56ae571b25e",
@@ -12,7 +12,7 @@
     "flashlight-logic.js": "30a8eccafa7914e752c04551eb17881e51266b873c396623ce217b1d9cd0c12b",
     "enemy-logic.js": "8d1040c484796eb934262b055b7e3bb09bb4364674aa11e0e8f2f99d7ddb3ab0",
     "fixtures-logic.js": "7a81060ea783b537edeb978009a214fef7af7dfca07603575eb201a9c99cafdb",
-    "demon-logic.js": "629ef1b1dddf3cd9b7475651eb44567c1e33220320735747f01996b4aa59004e",
+    "demon-logic.js": "1ef356942f06c5ec5e6f7342d398e47e3df909ba4fcc9a849180cd15370ebc92",
     "sim-logic.js": "0e19b43f8582ea9125eed327b485fcfbf5a4117936618fda5f4a5707335be6fb"
   }
 }

@@ -21,6 +21,7 @@ export const CONFIG = Object.freeze({
   elevatorHalfDepth: 1.6,
   enemyWalkSpeed: 2.25,
   enemyChaseSpeed: 4.85,
+  chaseAwarenessDistance: 10,
   enemyHuntSpeed: 3.05,
   enemyCatchDistance: 1.05,
 });
