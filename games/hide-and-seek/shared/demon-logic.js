@@ -146,6 +146,7 @@
         target,
         floorHeight: cfg.floorHeight,
         stairLayout: connector.layout,
+        approach: connector.approach, approaches: connector.approaches,
       }) : [];
       return { ...demon, route, routePurpose: purpose };
     }

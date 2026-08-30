@@ -72,26 +72,16 @@
 
     // Furnishings are placements, not meshes: the renderer knows how to draw a bed, and this knows
     // where the beds are and which parts of one a body cannot walk through.
-    const FURNISHING_COLLIDERS = {
-      bed: [{ y: 0.3, w: 2.1, h: 0.45, d: 3.2 }, { y: 0.67, w: 2, h: 0.25, d: 3 }],
-      desk: [{ y: 0.85, w: 1.6, h: 0.1, d: 0.7 }],
-      couch: [
-        { y: 0.35, w: 2, h: 0.45, d: 0.9 },
-        { y: 0.75, z: -0.34, w: 2, h: 0.7, d: 0.22 },
-        { x: -0.9, y: 0.52, w: 0.2, h: 0.62, d: 0.9 },
-        { x: 0.9, y: 0.52, w: 0.2, h: 0.62, d: 0.9 },
-      ],
-      dresser: [{ y: 0.45, w: 1.35, h: 0.9, d: 0.58 }],
-      vending: [{ y: 1.1, w: 1.1, h: 2.2, d: 0.9 }],
-      plant: [],
-    };
+    // What each placement stops is shared plan geometry now, in `collision-logic.js`: the mall had
+    // no such table at all, so its furniture was scenery. One table, both buildings.
+    const furnishingColliders = geometry.furnishingColliders;
 
     // Every placement carries a stable id. A drawer is a contested object online — who searched it
     // and who got the key are answers the authority gives — so it has to be nameable without a mesh.
     function furnish(floor, baseY, type, x, z, rotationY = 0, extra = {}) {
       const placement = { id: `fx-${floor}-${furnishings.length}`, type, floor, x, z, rotationY, y: baseY, ...extra };
       furnishings.push(placement);
-      for (const part of FURNISHING_COLLIDERS[type] || []) {
+      for (const part of furnishingColliders(placement)) {
         const offset = rotateY(part.x || 0, part.z || 0, rotationY);
         boxes.push({
           kind: 'furnishing', floor, group: 'furnishing', of: type, collider: true, material: null,

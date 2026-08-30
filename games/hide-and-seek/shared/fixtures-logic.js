@@ -42,12 +42,24 @@
     elevatorDoorSpeed: 1.35,
     elevatorCenterX: 2.5,
     elevatorCenterZ: 57.45,
+    // The door line. Its side of `elevatorCenterZ` is what tells the cabin which way it opens.
+    elevatorFrontZ: 55.88,
     floorHeight: 4.6,
     // The cabin's dimensions, which the renderer draws and the authority has to collide.
     cabinWidth: 2.5,
     cabinDepth: 3.2,
     cabinHeight: 2.65,
   });
+
+  // Which way the cabin opens, as a sign: -1 for doors toward -Z (the hotel's lift and the default
+  // for any plan that never says), +1 for doors toward +Z. It is read off the plan's own two numbers
+  // rather than configured, so a building cannot state a facing that disagrees with its geometry.
+  function liftFacing(cfg) {
+    const front = Number(cfg.elevatorFrontZ);
+    const center = Number(cfg.elevatorCenterZ);
+    if (!Number.isFinite(front) || !Number.isFinite(center) || front === center) return -1;
+    return front > center ? 1 : -1;
+  }
 
   function settings(config) {
     return config ? { ...FIXTURE_DEFAULTS, ...config } : FIXTURE_DEFAULTS;
@@ -102,7 +114,7 @@
     for (const floor of liftFloors) {
       items.push({
         id: 'elevator-button-' + floor, kind: FIXTURE_KINDS.ELEVATOR_BUTTON, floor: null, callFloor: floor,
-        x: cfg.elevatorCenterX, localY: 0.72 + (floor - 1) * 0.35, z: cfg.elevatorCenterZ + 0.25,
+        x: cfg.elevatorCenterX, localY: 0.72 + (floor - 1) * 0.35, z: cfg.elevatorCenterZ - 0.25 * liftFacing(cfg),
         y: 0, inCabin: true,
       });
     }
@@ -352,11 +364,17 @@
     const cx = cfg.elevatorCenterX;
     const cz = cfg.elevatorCenterZ;
     const half = cfg.cabinWidth / 2;
-    const frontZ = cz - cfg.cabinDepth / 2;
+    // The cabin's own axis: `frontZ` is the door line and `backZ` the wall behind the passenger,
+    // whichever way round those fall in world Z.
+    const facing = liftFacing(cfg);
+    const frontZ = cz + facing * (cfg.cabinDepth / 2);
+    const backZ = cz - facing * (cfg.cabinDepth / 2);
+    const sideMinZ = Math.min(frontZ, backZ);
+    const sideMaxZ = Math.max(frontZ, backZ);
     const boxes = [
-      { id: 'elevator-cabin-left', minX: cx - half - 0.06, maxX: cx - half + 0.06, minY: lift.y, maxY: lift.y + cfg.cabinHeight, minZ: frontZ, maxZ: cz + cfg.cabinDepth / 2 },
-      { id: 'elevator-cabin-right', minX: cx + half - 0.06, maxX: cx + half + 0.06, minY: lift.y, maxY: lift.y + cfg.cabinHeight, minZ: frontZ, maxZ: cz + cfg.cabinDepth / 2 },
-      { id: 'elevator-cabin-back', minX: cx - half, maxX: cx + half, minY: lift.y, maxY: lift.y + cfg.cabinHeight, minZ: cz + cfg.cabinDepth / 2 - 0.06, maxZ: cz + cfg.cabinDepth / 2 + 0.06 },
+      { id: 'elevator-cabin-left', minX: cx - half - 0.06, maxX: cx - half + 0.06, minY: lift.y, maxY: lift.y + cfg.cabinHeight, minZ: sideMinZ, maxZ: sideMaxZ },
+      { id: 'elevator-cabin-right', minX: cx + half - 0.06, maxX: cx + half + 0.06, minY: lift.y, maxY: lift.y + cfg.cabinHeight, minZ: sideMinZ, maxZ: sideMaxZ },
+      { id: 'elevator-cabin-back', minX: cx - half, maxX: cx + half, minY: lift.y, maxY: lift.y + cfg.cabinHeight, minZ: backZ - 0.06, maxZ: backZ + 0.06 },
     ];
     // Doors mostly open have stopped being an obstacle — the same 0.62 threshold the hall doors use.
     if (lift.doorAmount < 0.62) {

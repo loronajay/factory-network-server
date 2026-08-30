@@ -46,7 +46,8 @@
   // A room is an 8x8 box given by its centre (that is the shape `roomCenters` already holds); a
   // tunnel runs the length of the two rooms it links, so it carries explicit bounds instead.
   function zoneBounds(zone, half) {
-    if (zoneKindOf(zone) === ZONE_KINDS.TUNNEL) return zone;
+    if (zoneKindOf(zone) === ZONE_KINDS.TUNNEL
+      || ['minX', 'maxX', 'minZ', 'maxZ'].every(key => Number.isFinite(zone[key]))) return zone;
     return { minX: zone.x - half, maxX: zone.x + half, minZ: zone.z - half, maxZ: zone.z + half };
   }
 

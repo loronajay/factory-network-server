@@ -179,13 +179,15 @@
       if (fromFloor !== toFloor) {
         const connector = connectorBetween(fromFloor, toFloor, from);
         if (connector) {
-          for (const step of walkRoute(cursor, connector.approach, fromFloor)) {
+          const entryApproach = connector.approaches?.[fromFloor] || connector.approach;
+          const exitApproach = connector.approaches?.[toFloor] || connector.approach;
+          for (const step of walkRoute(cursor, entryApproach, fromFloor)) {
             route.push({ x: step.x, y: floorY(fromFloor), z: step.z, floor: fromFloor, guided: false });
           }
           route.push(...createStairRoute({
-            fromFloor, toFloor, floorHeight, stairLayout: connector.layout, approach: connector.approach,
+            fromFloor, toFloor, floorHeight, stairLayout: connector.layout, approach: connector.approach, approaches: connector.approaches,
           }));
-          cursor = { x: connector.approach.x, z: connector.approach.z, floor: toFloor };
+          cursor = { x: exitApproach.x, z: exitApproach.z, floor: toFloor };
         } else {
           cursor = { x: from.x, z: from.z, floor: toFloor };
         }
@@ -202,7 +204,7 @@
 
   // `approach` is the hall point outside the stair door. It was `(0, 42.8)` — the hotel's corridor,
   // written into the router — so a second building's stairs could not be walked to at all.
-  function createStairRoute({ fromFloor, toFloor, floorHeight, stairLayout, approach = { x: 0, z: 42.8 } }) {
+  function createStairRoute({ fromFloor, toFloor, floorHeight, stairLayout, approach = { x: 0, z: 42.8 }, approaches = {} }) {
     if (fromFloor === toFloor) return [];
     const point = (x, y, z, floor, guided = true, stair = true) => {
       const result = { x, y, z, floor, guided };
@@ -210,7 +212,9 @@
       return result;
     };
     const floorY = (floor) => (floor - 1) * floorHeight;
-    const route = [point(approach.x, floorY(fromFloor), approach.z, fromFloor, false, false)];
+    const entryApproach = approaches[fromFloor] || approach;
+    const exitApproach = approaches[toFloor] || approach;
+    const route = [point(entryApproach.x, floorY(fromFloor), entryApproach.z, fromFloor, false, false)];
     const entranceFor = (floor) => stairLayout.entrances.find((entry) => entry.floor === floor);
     const addEntrance = (floor) => {
       const entrance = entranceFor(floor);
@@ -228,6 +232,13 @@
       // written assuming the hotel's switchback, so a one-flight connector crashed the router.
       const west = lanes.find((flight) => flight.lane === 'west') || lanes[0];
       const east = lanes.find((flight) => flight.lane === 'east') || west;
+      if (lanes.length === 1) {
+        const start = point(west.startX, west.startY, west.startZ, transition);
+        const end = point(west.endX, west.endY, west.endZ, transition + 1);
+        route.push(...(goingUp ? [start, end] : [end, start]));
+        floor += goingUp ? 1 : -1;
+        continue;
+      }
       if (goingUp) {
         route.push(
           point(west.startX, west.startY, west.startZ, floor),
@@ -248,7 +259,7 @@
     }
 
     addEntrance(toFloor);
-    route.push(point(0, floorY(toFloor), 42.8, toFloor, false, false));
+    route.push(point(exitApproach.x, floorY(toFloor), exitApproach.z, toFloor, false, false));
     return route;
   }
 
@@ -264,8 +275,10 @@
       const east = stairLayout.flights.find((flight) => flight.transition === transition && flight.lane === 'east');
       add({ x: west.startX, y: west.startY, z: west.startZ }, transition);
       add({ x: west.endX, y: west.endY, z: west.endZ }, transition);
-      add({ x: east.startX, y: east.startY, z: east.startZ }, transition + 1);
-      add({ x: east.endX, y: east.endY, z: east.endZ }, transition + 1);
+      if (east) {
+        add({ x: east.startX, y: east.startY, z: east.startZ }, transition + 1);
+        add({ x: east.endX, y: east.endY, z: east.endZ }, transition + 1);
+      }
       add(entranceFor(transition + 1), transition + 1);
     }
     return nodes;
@@ -288,7 +301,7 @@
   // A player can be halfway up a flight while the rest of the game quite correctly reports floor 0.
   // Route along the stair's centreline in that case instead of rounding the player to a floor and
   // steering at them through the shaft wall. The same route works when the demon is already inside.
-  function createStairPursuitRoute({ enemy, target, floorHeight, stairLayout }) {
+  function createStairPursuitRoute({ enemy, target, floorHeight, stairLayout, approach, approaches = {} }) {
     const nodes = stairSpine(stairLayout);
     const targetProjection = projectToSpine(target, nodes);
     const floorOf = (y) => Math.max(1, Math.min(stairLayout.entrances.length, Math.round(y / floorHeight) + 1));
@@ -308,7 +321,8 @@
       const entryFloor = enemy.floor || floorOf(enemy.y);
       const entrance = stairLayout.entrances.find((entry) => entry.floor === entryFloor);
       const entryIndex = nodes.findIndex((node) => node.floor === entryFloor && node.x === entrance.x && node.y === entrance.y && node.z === entrance.z);
-      route.push({ x: 0, y: entrance.y, z: entrance.z, floor: entryFloor, guided: false });
+      const entry = approaches[entryFloor] || approach || { x: 0, z: entrance.z };
+      route.push({ x: entry.x, y: entrance.y, z: entry.z, floor: entryFloor, guided: false });
       pushUnique({ x: entrance.x, y: entrance.y, z: entrance.z, floor: entryFloor, guided: true, stair: true });
       startProgress = entryIndex;
     }

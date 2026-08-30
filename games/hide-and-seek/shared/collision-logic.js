@@ -175,8 +175,104 @@
     return false;
   }
 
+  // --- what a piece of furniture stops -----------------------------------------------------------
+  //
+  // A placement is a type and a position; these are the boxes that type occupies, in the placement's
+  // own frame, and a plan rotates them into world space when it emits them. It lives here rather
+  // than in a plan module for the reason everything else here does: the mall's `place()` had no such
+  // table at all, so every desk, rack and cinema seat in Cinder Mall was scenery a body walked
+  // straight through. One table, read by both buildings.
+  //
+  // An empty list is a real answer — a planter is dressed low enough to walk over the edge of, and
+  // making it solid only snags a fleeing hider on a pot.
+  const FURNISHING_COLLIDERS = Object.freeze({
+    // hotel
+    bed: [{ y: 0.3, w: 2.1, h: 0.45, d: 3.2 }, { y: 0.67, w: 2, h: 0.25, d: 3 }],
+    desk: [{ y: 0.85, w: 1.6, h: 0.1, d: 0.7 }],
+    couch: [
+      { y: 0.35, w: 2, h: 0.45, d: 0.9 },
+      { y: 0.75, z: -0.34, w: 2, h: 0.7, d: 0.22 },
+      { x: -0.9, y: 0.52, w: 0.2, h: 0.62, d: 0.9 },
+      { x: 0.9, y: 0.52, w: 0.2, h: 0.62, d: 0.9 },
+    ],
+    dresser: [{ y: 0.45, w: 1.35, h: 0.9, d: 0.58 }],
+    vending: [{ y: 1.1, w: 1.1, h: 2.2, d: 0.9 }],
+    plant: [],
+    // mall. Sizes that carry a `width` on the placement are emitted by the plan instead, because a
+    // 8.2m bookcase and a 3m one cannot share a fixed box.
+    table: [{ y: 0.4, w: 1.55, h: 0.85, d: 1.55 },
+      ...[[1.05, 0], [-1.05, 0], [0, 1.05], [0, -1.05]].map(([x, z]) => ({ x, z, y: 0.4, w: 0.68, h: 0.8, d: 0.68 }))],
+    'cinema-seat': [{ y: 0.67, w: 0.86, h: 1.34, d: 0.84 }],
+    'display-bed': [{ y: 0.45, w: 2.05, h: 0.9, d: 3 }],
+    arcade: [{ y: 0.93, w: 1, h: 1.85, d: 0.9 }],
+    crate: [{ y: 0.58, w: 1.15, h: 1.15, d: 1.15 }],
+    'side-table-lamp': [{ y: 0.28, w: 0.7, h: 0.56, d: 0.7 }],
+    'salon-station': [{ y: 0.45, w: 0.75, h: 0.9, d: 0.75 }],
+    'cinema-screen': [],
+    bookcase: [],
+    shelf: [],
+    rack: [],
+    'toy-display': [],
+    counter: [],
+    fountain: [{ y: 0.375, w: 7.6, h: 0.75, d: 7.6 }],
+  });
+
+  // The boxes one placement occupies in world space. `sized` types read their footprint off the
+  // placement itself, so one entry covers every length of gondola a shop is dressed with.
+  const SIZED_FURNISHINGS = Object.freeze({
+    crate: (p) => [{ y: (p.scale || 1.15) / 2, w: p.scale || 1.15, h: p.scale || 1.15, d: p.scale || 1.15 }],
+    bookcase: (p) => [{ y: (p.height || 1.95) / 2, w: p.width || 8.2, h: p.height || 1.95, d: 0.48 }],
+    shelf: (p) => [{ y: (p.height || 1.8) / 2, w: p.width || 3, h: p.height || 1.8, d: p.depth || 0.65 }],
+    rack: (p) => [{ y: 0.78, w: p.width || 3, h: 1.56, d: 0.6 }],
+    'toy-display': (p) => [{ y: 0.46, w: p.width || 3.2, h: 0.92, d: 0.8 }],
+    counter: (p) => [{ y: 0.69, w: (p.width || 4) + 0.14, h: 1.38, d: (p.depth || 1) + 0.14 }],
+  });
+
+  function furnishingColliders(placement) {
+    if (!placement) return [];
+    const sized = SIZED_FURNISHINGS[placement.type];
+    if (sized) return sized(placement);
+    return FURNISHING_COLLIDERS[placement.type] || [];
+  }
+
+  // --- the lift's facing ------------------------------------------------------------------------
+  //
+  // Which way a cabin opens is the building's business, not the engine's. While the hotel was the
+  // only map its doors always faced -Z, so `frontZ < centerZ` got written into the occupancy tests,
+  // the cabin colliders and the hall-door placement as a bare minus sign. A second building put its
+  // lift in a lobby that opens the other way, and a lift whose doors open into its own shaft is not
+  // a tuning problem.
+  //
+  // `elevatorFacing` reads the sign off the plan's own two numbers, and `cabinOffset` projects a
+  // world Z into the cabin's own axis: 0 at the centre line, positive toward the doors. Every test
+  // that used to compare raw Z now compares an offset, so both orientations read identically.
+  function elevatorFacing(shaft) {
+    if (!shaft) return -1;
+    const front = Number(shaft.frontZ);
+    const center = Number(shaft.centerZ);
+    if (!Number.isFinite(front) || !Number.isFinite(center) || front === center) return -1;
+    return front > center ? 1 : -1;
+  }
+
+  // How far `z` sits toward the doors from the cabin's centre line, in metres.
+  function cabinOffset(z, shaft) {
+    return (z - Number(shaft.centerZ)) * elevatorFacing(shaft);
+  }
+
+  // Is a body standing in the cabin, looked at from above? `frontMargin` is how far past the door
+  // line still counts (a body in the doorway is aboard) and `backMargin` how far behind the centre.
+  function inCabinFootprint(position, shaft, { halfWidth = 1.12, frontMargin = 0.12, backMargin = 1.46 } = {}) {
+    if (!shaft || !position) return false;
+    if (Math.abs(position.x - Number(shaft.centerX)) >= halfWidth) return false;
+    const offset = cabinOffset(position.z, shaft);
+    const frontOffset = Math.abs(Number(shaft.frontZ) - Number(shaft.centerZ));
+    return offset > -backMargin && offset < frontOffset + frontMargin;
+  }
+
   return {
     collidesAt, createBoxCollider, segmentBlocked,
+    elevatorFacing, cabinOffset, inCabinFootprint,
+    FURNISHING_COLLIDERS, furnishingColliders,
     // Shared plan geometry, re-exported by every plan module so `sim-logic.createPlanSpace` can be
     // handed any map's plan and still find the helpers it needs.
     boxBounds, hingedBounds, resolveColliders, rotateY, slidingBounds, walkHeightAt,

@@ -132,7 +132,7 @@
 
   function createSimulation({
     movement, round, stamina, flashlight, sanity, fixtures, demon: demonLogic, enemy, layout,
-    space, plan: hotel, zones = [], config = {}, random = Math.random,
+    collision, space, plan: hotel, zones = [], config = {}, random = Math.random,
   } = {}) {
     const player = { ...PLAYER_DEFAULTS, ...(config.player || {}) };
     const roundConfig = config.round;
@@ -144,13 +144,23 @@
     const shaft = (hotel && hotel.elevator) || {
       centerX: player.elevatorCenterX, centerZ: player.elevatorCenterZ, frontZ: player.elevatorFrontZ,
     };
-    const fixtureConfig = { ...(config.fixtures || {}), floorHeight: player.floorHeight, elevatorCenterX: shaft.centerX, elevatorCenterZ: shaft.centerZ };
+    // Which way the cabin opens is the plan's, not the engine's: `frontZ < centerZ` was the hotel's
+    // answer and got written into every Z comparison as a bare minus sign. Both tests below ask
+    // `inCabinFootprint` instead, so a lift that opens toward +Z reads identically.
+    const inCabin = (position) => (collision && collision.inCabinFootprint
+      ? collision.inCabinFootprint(position, shaft)
+      : Math.abs(position.x - shaft.centerX) < 1.12
+        && (position.z - shaft.centerZ) * (shaft.frontZ > shaft.centerZ ? 1 : -1) > -1.46
+        && (position.z - shaft.centerZ) * (shaft.frontZ > shaft.centerZ ? 1 : -1)
+          < Math.abs(shaft.frontZ - shaft.centerZ) + 0.12);
+    const fixtureConfig = { ...(config.fixtures || {}), floorHeight: player.floorHeight, elevatorCenterX: shaft.centerX, elevatorCenterZ: shaft.centerZ, elevatorFrontZ: shaft.frontZ };
     const demonConfig = { ...(config.demon || {}), floorHeight: player.floorHeight, floorCount: player.floorCount };
     // The roster is the map's, and its length is the demon count. Two was the hotel's number, never
     // a rule — a simulation given three walks, looks and catches with three.
     const demonRoster = normalizeRoster(config.demons);
     const body = { height: player.bodyHeight, radius: player.playerRadius };
-    let zoneList = zones;
+    // Older adapters publish room centres only; retain authored bounds from the plan itself.
+    let zoneList = zones.map(zone => ({ ...hotel?.roomCenters.find(room => room.roomNumber === zone.id), ...zone }));
 
     // Fixtures and demons need the plan; a simulation without one is the older player-only shape and
     // still ticks, which is what keeps `tests/sim-logic.test.js` free of a whole hotel.
@@ -178,9 +188,7 @@
         const diff = Math.abs(entry.y - (id - 1) * player.floorHeight);
         if (diff < best) { best = diff; floor = id; }
       }
-      const inCabinXZ = Math.abs(entry.x - shaft.centerX) < 1.12
-        && entry.z > shaft.frontZ - 0.12 && entry.z < shaft.centerZ + 1.46;
-      if (lift && inCabinXZ && lift.state === 'moving') return 0;
+      if (lift && lift.state === 'moving' && inCabin(entry)) return 0;
       if (best < 0.38) return floor;
       if (navigation && demonLogic && demonLogic.isInStairwell(entry, { navigation })) return 0;
       return floor;
@@ -270,9 +278,7 @@
       // A body standing in the cabin rides it. The lift is authoritative over its passengers, which
       // is the only way two players in one elevator can agree about where they are.
       if (lift && lift.state === 'moving') {
-        const inCabin = Math.abs(position.x - shaft.centerX) < 1.12
-          && position.z > shaft.frontZ - 0.12 && position.z < shaft.centerZ + 1.46;
-        if (inCabin && Math.abs(position.y - lift.y) < 0.9) position = { ...position, y: clean(lift.y) };
+        if (inCabin(position) && Math.abs(position.y - lift.y) < 0.9) position = { ...position, y: clean(lift.y) };
       }
       const lit = flashlight.tickFlashlight(flashlight.setFlashlight(entry.flashlight, command.light), delta, flashlightConfig);
       const floor = floorOf(position, lift);
@@ -357,9 +363,15 @@
       const ctx = {
         space, movement, enemy, sanity, sanityConfig, random,
         candidates, huntCandidates, rooms, navigation, navigator, config: demonConfig,
+        // A room with no door is open, not shut. While the hotel was the only building every room
+        // had a leaf, so "no door record" could only mean a bad room number and answering `locked`
+        // was the safe read. A mall's storefront is a glass shopfront with a framed opening and no
+        // leaf at all, and calling that locked is a shop no demon ever patrols into.
         isRoomLocked: (roomNumber) => {
           const item = doorByRoom.get(roomNumber);
-          return !item || !doors || !doors.doors[item.id] ? true : !!doors.doors[item.id].locked;
+          if (!item) return false;
+          const door = doors && doors.doors[item.id];
+          return door ? !!door.locked : true;
         },
         openDoor: (roomNumber, options) => {
           const item = doorByRoom.get(roomNumber);
