@@ -35,20 +35,22 @@
 
   // Every department opens onto one of the three vertical hospital corridors.
   // Restricting normal doors to east/west faces deliberately reuses the proven door axis.
+  // A `locked` department needs its floor's master key; the master hangs in a drawer inside an open
+  // department on the same floor, so the key loop is walkable without a key.
   const ROOMS = Object.freeze([
     // Ground floor.
     Object.freeze({ id:'101', floor:1, name:'EMERGENCY', minX:-41.5,maxX:-29.5,minZ:-31.5,maxZ:-5.5, front:'east', entry:-18 }),
     Object.freeze({ id:'102', floor:1, name:'CAFETERIA', minX:-18.5,maxX:-5.5,minZ:-31.5,maxZ:-5.5, front:'east', entry:-18 }),
-    Object.freeze({ id:'103', floor:1, name:'PHARMACY', minX:5.5,maxX:20,minZ:-31.5,maxZ:-5.5, front:'west', entry:-18 }),
-    Object.freeze({ id:'104', floor:1, name:'IMAGING', minX:30.5,maxX:41.5,minZ:-31.5,maxZ:-5.5, front:'west', entry:-18 }),
+    Object.freeze({ id:'103', floor:1, name:'PHARMACY', minX:5.5,maxX:20,minZ:-31.5,maxZ:-5.5, front:'west', entry:-18, locked:true }),
+    Object.freeze({ id:'104', floor:1, name:'IMAGING', minX:30.5,maxX:41.5,minZ:-31.5,maxZ:-5.5, front:'west', entry:-18, locked:true }),
     Object.freeze({ id:'105', floor:1, name:'LABORATORY', minX:-41.5,maxX:-29.5,minZ:5.5,maxZ:31.5, front:'east', entry:18 }),
     Object.freeze({ id:'106', floor:1, name:'SURGERY', minX:-18.5,maxX:-5.5,minZ:5.5,maxZ:31.5, front:'east', entry:18 }),
     Object.freeze({ id:'107', floor:1, name:'RECOVERY', minX:5.5,maxX:20,minZ:5.5,maxZ:31.5, front:'west', entry:18 }),
 
     // Upper floor.
     Object.freeze({ id:'201', floor:2, name:'PATIENT WARD A', minX:-41.5,maxX:-29.5,minZ:-31.5,maxZ:-5.5, front:'east', entry:-18 }),
-    Object.freeze({ id:'202', floor:2, name:'ADMINISTRATION', minX:-18.5,maxX:-5.5,minZ:-31.5,maxZ:-5.5, front:'east', entry:-18 }),
-    Object.freeze({ id:'203', floor:2, name:'ISOLATION', minX:5.5,maxX:20,minZ:-31.5,maxZ:-5.5, front:'west', entry:-18 }),
+    Object.freeze({ id:'202', floor:2, name:'ADMINISTRATION', minX:-18.5,maxX:-5.5,minZ:-31.5,maxZ:-5.5, front:'east', entry:-18, locked:true }),
+    Object.freeze({ id:'203', floor:2, name:'ISOLATION', minX:5.5,maxX:20,minZ:-31.5,maxZ:-5.5, front:'west', entry:-18, locked:true }),
     Object.freeze({ id:'204', floor:2, name:'ICU', minX:30.5,maxX:41.5,minZ:-31.5,maxZ:-5.5, front:'west', entry:-18 }),
     Object.freeze({ id:'205', floor:2, name:'PATIENT WARD B', minX:-41.5,maxX:-29.5,minZ:5.5,maxZ:31.5, front:'east', entry:18 }),
     Object.freeze({ id:'206', floor:2, name:'NURSES / MEDS', minX:-18.5,maxX:-5.5,minZ:5.5,maxZ:31.5, front:'east', entry:18 }),
@@ -233,7 +235,12 @@
       const openAngle=room.front==='east'?-HALF_TURN:HALF_TURN; // always swings INTO department
       const leaf=hingedLeaf({
         id:`door-${room.id}`,floor,fixed,center:room.entry,width,openAngle,
-        extra:{roomNumber:room.id,locked:false,requiredKey:null,openInitially:true}
+        extra:{
+          roomNumber:room.id,
+          locked:!!room.locked,
+          requiredKey:keyIdForFloor(floor),
+          openInitially:!room.locked
+        }
       });
       roomDoors.push(leaf); swingDoors.push(leaf);
       doorFrame({floor,axis:'z',fixed,center:room.entry,width,material:'metal'});
@@ -305,6 +312,16 @@
     // Pharmacy / meds: production dressers on the far wall plus framed racks.
     for(const lat of [-9,-5,5,9]) inPlace('103','dresser',8.5,lat,HALF_TURN,{label:'medication cabinet'});
     for(const lat of [-8,-2,5,9]) inPlace('206','dresser',8.3,lat,HALF_TURN,{label:'medication cabinet'});
+
+    // Each floor's master key. The pharmacy and isolation are the doors it opens, so the drawer that
+    // holds it stands in a department that is open from the start: the laboratory downstairs and the
+    // nurses' station above. A drawer holds one key, and whoever searches it second finds it empty.
+    inPlace('105','dresser',10.9,-4,-HALF_TURN,{
+      keyId:keyIdForFloor(1),keyLabel:keyLabelForFloor(1),label:'specimen cabinet'
+    });
+    inPlace('206','dresser',8.3,-5,HALF_TURN,{
+      keyId:keyIdForFloor(2),keyLabel:keyLabelForFloor(2),label:'narcotics cabinet'
+    });
 
     function rack(floor,x,z,w=4,d=.72,rotationY=0,id='rack'){
       const turned=Math.abs(Math.sin(rotationY))>.7;

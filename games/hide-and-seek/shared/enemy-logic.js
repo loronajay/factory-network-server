@@ -67,7 +67,13 @@
   //
   // An empty graph routes to nothing on purpose. A single open room genuinely has no waypoints, and
   // "walk straight at it" is the correct answer there rather than a thrown error inside a tick.
-  function createNavigator(navigation) {
+  //
+  // `space` is optional and is what makes joining the graph honest rather than merely near: a body
+  // enters the graph at the closest waypoint it can actually walk straight to. Without it the
+  // nearest waypoint by distance can be one on the other side of a wall � the doorway of the shop
+  // next door, the hall stop across a storefront � and the first leg of every route is then a line
+  // through that wall. Callers that have a world pass it; a pure graph test need not.
+  function createNavigator(navigation, { space = null } = {}) {
     const nodes = (navigation && navigation.nodes) || [];
     const edges = (navigation && navigation.edges) || [];
     const connectors = (navigation && navigation.connectors) || [];
@@ -82,15 +88,30 @@
 
     const cost = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
-    function nearestNode(point, floor) {
-      let best = null;
-      let bestDistance = Infinity;
-      for (const node of nodes) {
-        if (node.floor !== floor) continue;
-        const distance = cost(node, point);
-        if (distance < bestDistance) { best = node; bestDistance = distance; }
-      }
-      return best;
+    // Nodes on one floor, nearest first. Sorting rather than scanning for a single minimum is what
+    // lets the reachability filter below fall through to the second-nearest waypoint.
+    function nodesByDistance(point, floor) {
+      return nodes
+        .filter((node) => node.floor === floor)
+        .map((node) => ({ node, distance: cost(node, point) }))
+        .sort((a, b) => a.distance - b.distance)
+        .map((entry) => entry.node);
+    }
+
+    function reachable(point, node, y) {
+      if (!space || !space.sightBlocked) return true;
+      const eye = (Number.isFinite(y) ? y : (Number.isFinite(point.y) ? point.y : 0)) + 1;
+      return !space.sightBlocked({ x: point.x, y: eye, z: point.z }, { x: node.x, y: eye, z: node.z }, { tolerance: 0.2 });
+    }
+
+    // The nearest waypoint the body could walk straight to, falling back to the nearest one of all
+    // when the body is somewhere no waypoint can see � wedged in a corner, mid-doorway � because a
+    // route to a waypoint it has to squeeze towards still beats no route at all.
+    function nearestNode(point, floor, { y = null } = {}) {
+      const candidates = nodesByDistance(point, floor);
+      if (!candidates.length) return null;
+      for (const node of candidates) if (reachable(point, node, y)) return node;
+      return candidates[0];
     }
 
     // Dijkstra. The graphs are a few dozen nodes per floor, so the simple version is the right one —
@@ -128,16 +149,23 @@
 
     // The waypoints between two points on one floor, target excluded — the caller appends the target
     // itself, because only it knows whether the last step is a room, a landing or a body.
-    function walkRoute(from, to, floor = from.floor) {
-      const start = nearestNode(from, floor);
-      const goal = nearestNode(to, floor);
+    function walkRoute(from, to, floor = from.floor, { y = null } = {}) {
+      const start = nearestNode(from, floor, { y });
+      const goal = nearestNode(to, floor, { y });
       if (!start || !goal) return [];
       const path = shortestPath(start.id, goal.id);
       if (!path) return [];
       const points = path.map((id) => byId.get(id));
-      // Do not send a demon backwards to a waypoint it has already passed: if the first node is
-      // further from the goal than the demon already is, it is behind it.
-      if (points.length && cost(points[0], to) > cost(from, to)) points.shift();
+      // Every route joins the graph at its nearest node, including the first leg.
+      //
+      // This used to drop that node whenever the body already stood closer to the goal than the node
+      // did � a corridor optimisation, and a safe one in a corridor, where "closer to the goal" and
+      // "further along the hall" are the same sentence. They are not the same sentence in a mall: a
+      // demon standing in a storefront is a metre nearer the shop across the concourse than the aisle
+      // node outside its own door is, so the node that would have walked it out of the shop was
+      // discarded and the leg became a straight line through the shopfront glass. Walking a couple of
+      // metres back to a waypoint looks like a demon changing its mind; walking into a wall for the
+      // rest of the round does not.
       return points.map((node) => ({ x: node.x, z: node.z, floor: node.floor }));
     }
 
@@ -181,7 +209,7 @@
         if (connector) {
           const entryApproach = connector.approaches?.[fromFloor] || connector.approach;
           const exitApproach = connector.approaches?.[toFloor] || connector.approach;
-          for (const step of walkRoute(cursor, entryApproach, fromFloor)) {
+          for (const step of walkRoute(cursor, entryApproach, fromFloor, { y: floorY(fromFloor) })) {
             route.push({ x: step.x, y: floorY(fromFloor), z: step.z, floor: fromFloor, guided: false });
           }
           route.push(...createStairRoute({
@@ -192,7 +220,7 @@
           cursor = { x: from.x, z: from.z, floor: toFloor };
         }
       }
-      for (const step of walkRoute(cursor, target, toFloor)) {
+      for (const step of walkRoute(cursor, target, toFloor, { y: floorY(toFloor) })) {
         route.push({ x: step.x, y: floorY(toFloor), z: step.z, floor: toFloor, guided: false });
       }
       route.push({ x: target.x, y: floorY(toFloor), z: target.z, floor: toFloor, guided: false });

@@ -17,8 +17,12 @@
   // genuinely indifferent to who you are.
 
   const DEFAULTS = Object.freeze({
-    // A demon is 2.25m of body on a 0.32m footprint. Both numbers belong to the body, not the mover.
-    bodyHeight: 2.25,
+    // A demon is 2.25m of body on a 0.32m footprint, and it stoops. `bodyHeight` is what the mover
+    // needs clearance for, and every door in the game is 2.12m tall: a hunter measured at its full
+    // standing height cannot pass under a doorway header, so on a map that models one it simply
+    // stops in front of the service corridor and shuffles there for the rest of the round. The
+    // building decides how tall a thing may walk through it; the demon ducks.
+    bodyHeight: 2.05,
     bodyRadius: 0.32,
     eyeHeight: 2.05,
     // Detection is expensive (a sight ray per candidate), so it runs on its own slower clock. The
@@ -90,7 +94,7 @@
   function navigatorOf(ctx) {
     if (ctx.navigator) return ctx.navigator;
     const navigation = ctx.navigation || (ctx.hotel && ctx.hotel.navigation) || null;
-    const navigator = ctx.enemy.createNavigator(navigation || { nodes: [], edges: [], connectors: [] });
+    const navigator = ctx.enemy.createNavigator(navigation || { nodes: [], edges: [], connectors: [] }, { space: ctx.space });
     ctx.navigator = navigator;
     return navigator;
   }
@@ -351,7 +355,18 @@
     if (step.arrived) {
       return { ...demon, x: round6(step.x), y: round6(step.y), z: round6(step.z), route: demon.route.slice(1), moving: false, avoidance: null };
     }
-    if (!step.moved) return { ...demon, moving: false, avoidance: step.avoidance || null };
+    // Wedged. The offline hiders and the CPU seeker both give a waypoint up when the mover reports
+    // the way solid, and a demon has to do the same: without it a leg that cannot be walked is
+    // retried at sixty hertz forever, and a hunter standing in a doorway for the rest of the round
+    // is worse than one that takes a wrong turn.
+    if (!step.moved) {
+      return {
+        ...demon,
+        moving: false,
+        avoidance: step.avoidance || null,
+        route: step.blocked ? demon.route.slice(1) : demon.route,
+      };
+    }
     const turn = Math.min(1, delta * cfg.turnRate);
     let facingX = demon.facingX;
     let facingZ = demon.facingZ;

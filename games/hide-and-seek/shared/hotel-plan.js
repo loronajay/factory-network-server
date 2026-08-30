@@ -425,24 +425,54 @@
     }
 
     // The corridor spine, as a graph. One node per hall stop per floor, linked to its neighbours
-    // along Z, and one vertical connector: the stairwell every demon uses and no elevator.
+    // along Z, one node in the mouth of every bedroom door, and one vertical connector: the
+    // stairwell every demon uses and no elevator.
+    //
+    // The door nodes are the hotel catching up with the other two maps. The spine alone describes
+    // where a body walks *along* the corridor and says nothing about how it gets off it, so a route
+    // planned from inside a bedroom aimed at the nearest spine stop, which is through the bedroom
+    // wall � the demon and the CPU hiders would grind into it until the mover gave the leg up. The
+    // seeker had a hotel-shaped workaround for exactly this (`corridorSweep` below, the old |x|=3.75
+    // dogleg); putting the doorway in the graph is the same knowledge said once, as data, where
+    // every routed body reads it.
+    // Clear of the jamb, not level with it. The old sweep dogleg used |x| = 3.75, which is inside the
+    // corridor wall's own thickness and only walkable because the doorway happens to be a hole in it:
+    // a body approaching that point at an angle clips the jamb, stops dead, and � the mover having
+    // given the leg up � re-plans onto it forever. A waypoint a body may be sent to from anywhere on
+    // the floor has to stand in open corridor.
+    const DOORWAY_X = 3.4;
     function createNavigation(shell) {
       const SPINE_Z = [-52, -34, -18, 0, 18, 34, 49];
       const nodes = [];
       const edges = [];
+      const spineByFloor = new Map();
       for (const def of floorDefs) {
         let previous = null;
+        const spine = [];
         for (const z of SPINE_Z) {
           const id = `hall-${def.id}-${z}`;
           nodes.push({ id, floor: def.id, x: 0, z });
+          spine.push({ id, z });
           if (previous) edges.push([previous, id]);
           previous = id;
         }
+        spineByFloor.set(def.id, spine);
+      }
+      // Each doorway hangs off the corridor stop nearest its Z, so a body leaving a room rejoins the
+      // spine at the point it would have walked to anyway.
+      for (const door of roomDoors) {
+        const spine = spineByFloor.get(door.floor);
+        if (!spine) continue;
+        const id = `door-node-${door.roomNumber}`;
+        nodes.push({ id, floor: door.floor, x: Math.sign(door.x) * DOORWAY_X, z: door.z });
+        const nearest = spine.reduce((best, stop) => (Math.abs(stop.z - door.z) < Math.abs(best.z - door.z) ? stop : best), spine[0]);
+        edges.push([nearest.id, id]);
       }
       const stairLayout = layout.createStairLayout({ floorCount: floorDefs.length, floorHeight: config.floorHeight });
       return {
-        // This older spine graph has no room-entry nodes. Preserve its explicit bedroom doglegs;
-        // maps with complete aisle/door graphs use the navigator directly.
+        // The CPU seeker's room-to-room sweep. The graph now carries the same doglegs as door nodes,
+        // but the sweep also decides how a seeker *searches* a corridor rather than merely how it
+        // crosses one, so it stays the hotel's own answer and is asserted by `seeker-logic.test.js`.
         corridorSweep: { roomThreshold: 4.25, doorwayX: 3.75 },
         nodes,
         edges,
