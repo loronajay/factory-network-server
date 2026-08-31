@@ -4,9 +4,10 @@ import {
   createRack,
   simulateShot,
 } from "../shared/yam-bowling-physics.mjs";
+import { simulate3dShot, clear3dFallen } from "../shared/yam-bowling-3d.mjs";
 
 export const YAM_BOWLING_GAME_ID = "yam-bowling";
-export const YAM_BOWLING_PROTOCOL_VERSION = 2;
+export const YAM_BOWLING_PROTOCOL_VERSION = 3;
 export const YAM_BOWLING_RECONNECT_GRACE_MS = 30_000;
 export const YAM_BOWLING_REACTION_COOLDOWN_MS = 2_000;
 // The two reaction wheels a bowler throws mid-match -- stickers and spoken
@@ -71,7 +72,8 @@ function cloneMatch(match) {
     rematchRequestedBy: [...match.rematchRequestedBy],
     reactionCooldowns: { ...(match.reactionCooldowns || {}) },
     lastRoll: match.lastRoll
-      ? { ...match.lastRoll, shot: { ...match.lastRoll.shot }, pinsBefore: clonePins(match.lastRoll.pinsBefore), pinsAfter: clonePins(match.lastRoll.pinsAfter) }
+      ? { ...match.lastRoll, shot: { ...match.lastRoll.shot }, pinsBefore: clonePins(match.lastRoll.pinsBefore), pinsAfter: clonePins(match.lastRoll.pinsAfter),
+        ...(match.lastRoll.pinFalls ? { pinFalls: match.lastRoll.pinFalls.map(pin => ({ ...pin })) } : {}) }
       : null,
     result: match.result ? { ...match.result } : null,
   };
@@ -241,11 +243,12 @@ function rollLane(roomCode, seed, matchNumber) {
   return (hash >>> 0) % 1_000_003;
 }
 
-function freshMatch({ players, modeId, ranked = false, roomCode, seed, matchNumber, now }) {
+function freshMatch({ players, modeId, bowlingStyle = "arcade", ranked = false, roomCode, seed, matchNumber, now }) {
   const frames = MODE_FRAMES[modeId];
   return {
     gameId: YAM_BOWLING_GAME_ID,
     modeId,
+    bowlingStyle,
     // Frozen at creation, exactly like the mode and the lane roll. A client asks
     // the platform to move ELO only for a match the server called ranked, so the
     // stakes cannot be renegotiated once the first ball is thrown.
@@ -290,6 +293,7 @@ export function createYamMatchState(lobby, startAt = Date.now()) {
     players: memberIds.map((clientId, index) => playerFromLobby(lobby, clientId, index)),
     modeId,
     ranked: lobby?.settings?.ranked === true,
+    bowlingStyle: lobby?.settings?.bowlingStyle === "3d" ? "3d" : "arcade",
     roomCode: cleanText(lobby?.roomCode, "ROOM", 16),
     seed: Number.isFinite(Number(lobby?.seed)) ? Math.floor(Number(lobby.seed)) : 0,
     matchNumber: 1,
@@ -323,7 +327,7 @@ function error(code, message) {
   return { code, message };
 }
 
-export function applyYamShot(match, clientId, rawShot, now = Date.now()) {
+export function validateYamShotRequest(match, clientId, rawShot) {
   if (!match || match.phase !== "playing") {
     return { match, error: error("MATCH_NOT_PLAYING", "The match is not accepting shots.") };
   }
@@ -334,10 +338,17 @@ export function applyYamShot(match, clientId, rawShot, now = Date.now()) {
   const shot = validateShot(rawShot, match.rollNumber);
   if (shot?.stale) return { match, error: error("NOT_READY_FOR_SHOT", "That roll was already processed.") };
   if (!shot) return { match, error: error("INVALID_SHOT", "Shot inputs were outside the legal lane controls.") };
+  return { shot, error: null };
+}
+
+export function applyYamShot(match, clientId, rawShot, now = Date.now(), resolvedShot = null) {
+  const validated = validateYamShotRequest(match, clientId, rawShot);
+  if (validated.error) return validated;
+  const { shot } = validated;
 
   const next = cloneMatch(match);
   const pinsBefore = clonePins(next.pins);
-  const resolved = simulateShot(pinsBefore, shot);
+  const resolved = resolvedShot || (next.bowlingStyle === "3d" ? simulate3dShot(pinsBefore, shot) : simulateShot(pinsBefore, shot));
   const standing = expectedStanding(next);
   const knocked = Math.max(0, Math.min(standing, Math.round(resolved.knocked)));
   recordRoll(next, knocked);
@@ -351,13 +362,14 @@ export function applyYamShot(match, clientId, rawShot, now = Date.now()) {
     startedStanding: standing,
     pinsBefore,
     pinsAfter: clonePins(resolved.pins),
+    ...(next.bowlingStyle === "3d" ? { pinFalls: resolved.pinFalls, duration: resolved.duration } : {}),
     resolvedAt: now,
   };
   next.pins = next.phase === "complete"
     ? clonePins(resolved.pins)
     : expectedStanding(next) === 10
       ? createRack()
-      : clearFallen(resolved.pins);
+      : next.bowlingStyle === "3d" ? clear3dFallen(resolved.pins) : clearFallen(resolved.pins);
   return { match: next, error: null };
 }
 
@@ -454,6 +466,7 @@ export function requestYamRematch(match, clientId, now = Date.now()) {
         id, accountPlayerId, name, characterSlug, skinId, presentation: { ...presentation }, type,
       })),
       modeId: next.modeId,
+      bowlingStyle: next.bowlingStyle,
       // A rematch keeps the stakes it was agreed under: the lobby settings are
       // locked once a match starts, so there is nowhere for them to have changed.
       ranked: next.ranked === true,
@@ -470,6 +483,7 @@ export function serializeYamMatch(match, lobby, serverNow = Date.now()) {
   const serial = cloneMatch(match);
   const matchView = {
     modeId: serial.modeId,
+    bowlingStyle: serial.bowlingStyle || "arcade",
     playType: "online",
     cpuLevelId: "casual",
     frameIndex: serial.frameIndex,
@@ -485,6 +499,7 @@ export function serializeYamMatch(match, lobby, serverNow = Date.now()) {
     sessionId: serial.sessionId,
     modeId: serial.modeId,
     ranked: serial.ranked === true,
+    bowlingStyle: serial.bowlingStyle || "arcade",
     laneRoll: serial.laneRoll,
     phase: serial.phase,
     rollNumber: serial.rollNumber,

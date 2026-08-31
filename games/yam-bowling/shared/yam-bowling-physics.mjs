@@ -1,8 +1,9 @@
 // Server copy of Yam Bowling's deterministic deck simulation. Keep constants and
 // integration order in lockstep with the cabinet's physics-core.js. The browser
 // renders this simulation; only this module decides the scored pin count online.
-const RACK_FRONT_Z = 0.86;
-const Z_SCALE = 11.76;
+export const RACK_FRONT_Z = 0.86;
+export const Z_SCALE = 11.76;
+export const GUTTER_CENTER_X = 1.13;
 const PHYSICS_START_Z = 0.735;
 const BALL_RADIUS = 0.12;
 const PIN_RADIUS = 0.067;
@@ -32,7 +33,7 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function ballSpeedForShot({ power = MIN_THROW_POWER, speedScale = 1 } = {}) {
+export function ballSpeedForShot({ power = MIN_THROW_POWER, speedScale = 1 } = {}) {
   const chargedSpeed = MIN_BALL_SPEED + clamp(power, 0, 1) * (MAX_BALL_SPEED - MIN_BALL_SPEED);
   return chargedSpeed * speedScale;
 }

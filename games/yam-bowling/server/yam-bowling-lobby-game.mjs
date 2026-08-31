@@ -1,4 +1,6 @@
 import { broadcastToLobby, sendLobbyUpdated } from "../../../src/lobby-bus.mjs";
+import { sendToClient } from "../../../src/transport.mjs";
+import { queueYam3dShot } from "./yam-bowling-shot-job.mjs";
 import {
   YAM_BOWLING_GAME_ID,
   YAM_BOWLING_PROTOCOL_VERSION,
@@ -90,9 +92,10 @@ export const yamBowlingLobbyGame = {
   reconnectGracePeriodMs: YAM_BOWLING_RECONNECT_GRACE_MS,
 
   canStart(lobby) {
-    if (![1, YAM_BOWLING_PROTOCOL_VERSION].includes(Number(lobby?.settings?.protocolVersion))) return false;
+    const supported = lobby?.settings?.bowlingStyle === "3d" ? [YAM_BOWLING_PROTOCOL_VERSION] : [1, 2, YAM_BOWLING_PROTOCOL_VERSION];
+    if (!supported.includes(Number(lobby?.settings?.protocolVersion))) return false;
     return [...(lobby?.members || [])].every((clientId) =>
-      [1, YAM_BOWLING_PROTOCOL_VERSION].includes(lobby?.yamProfiles?.get(clientId)?.protocolVersion)
+      supported.includes(lobby?.yamProfiles?.get(clientId)?.protocolVersion)
     );
   },
 
@@ -129,6 +132,16 @@ export const yamBowlingLobbyGame = {
     }
 
     if (messageType === "yam_shot") {
+      if (lobby.yamMatch?.bowlingStyle === "3d") {
+        return queueYam3dShot(lobby, clientId, parseValue(value), {
+          onSettled() {
+            syncLobbyStatus(lobby);
+            broadcastMatch(lobby, lobby.status === "ended" ? "yam_match_ended" : "yam_match");
+            if (lobby.status === "ended") sendLobbyUpdated(lobby);
+          },
+          onError() { sendToClient(clientId, { event: "error", code: "SHOT_FAILED", message: "The 3D roll could not resolve. Please retry." }); },
+        });
+      }
       const applied = applyYamShot(lobby.yamMatch, clientId, parseValue(value), Date.now());
       if (applied.error) return { handled: true, error: applied.error };
       lobby.yamMatch = applied.match;
@@ -215,5 +228,5 @@ export const yamBowlingLobbyGame = {
     broadcastMatch(lobby);
   },
 
-  clearTimers() {},
+  clearTimers(lobby) { if (lobby) lobby.yamPendingShot = null; },
 };
