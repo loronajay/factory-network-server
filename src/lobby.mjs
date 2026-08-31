@@ -331,7 +331,7 @@ export function createLobby(clientId, data = {}, { isPrivate = false, displayOnl
   return lobby;
 }
 
-export function joinLobby(clientId, roomCode, identity = null) {
+export function joinLobby(clientId, roomCode, identity = null, expectedGameId = null) {
   const code = String(roomCode || "").trim().toUpperCase();
   const lobby = lobbies.get(code);
 
@@ -341,6 +341,13 @@ export function joinLobby(clientId, roomCode, identity = null) {
       code: "LOBBY_NOT_FOUND",
       message: "Lobby does not exist"
     });
+    return null;
+  }
+
+  // Opt-in for modern clients; legacy code-only joins retain their protocol.
+  // Validate BEFORE releasing a player's current seat.
+  if (expectedGameId != null && lobby.gameId !== sanitizeLobbyGameId(expectedGameId)) {
+    sendToClient(clientId, { event: "error", code: "LOBBY_GAME_MISMATCH", message: "That lobby belongs to a different game" });
     return null;
   }
 

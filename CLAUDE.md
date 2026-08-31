@@ -118,6 +118,12 @@ state-hash; a dropped seat is conceded by the remaining owner).
 
 ### Adding a game (the one path)
 
+Puck'd Up is now registered as a **two-seat staging lobby**, not playable online.
+Its game definition refuses match start and gameplay messages until the authority
+pass ships. See `games/puckd-up/README.md`; `npm run test:puckd-up` is included
+in `npm test`. Modern `join_lobby` requests may also send `gameId`, which is
+validated before releasing an existing seat; legacy code-only joins still work.
+
 1. Create `games/<id>/server/<id>.game.mjs` exporting a `definition`.
 2. Register it in the `import`s + `allDefinitions()` array in `games/registry.mjs`.
 3. Add a `.test.mjs` for any logic; if there's none, `games/registry.test.mjs`

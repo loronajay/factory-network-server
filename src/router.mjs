@@ -57,7 +57,7 @@ const handlers = {
   },
 
   join_lobby({ clientId, data }) {
-    joinLobby(clientId, data.roomCode, data.identity);
+    joinLobby(clientId, data.roomCode, data.identity, data.gameId);
   },
 
   find_lobby({ clientId, data }) {
