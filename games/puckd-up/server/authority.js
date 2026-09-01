@@ -6,7 +6,7 @@ import { clampTarget, PROTOCOL_VERSION, RECONNECT_MS } from '../scripts/online/p
 
 // The server alone runs Cannon and scoring. Seat IDs are socket-session bindings;
 // account labels are not authentication or authority to write platform records.
-export function createAuthority({ CANNON, bodies, matchId, seats, random = Math.random }) {
+export function createAuthority({ CANNON, bodies, matchId, seats, colors, random = Math.random }) {
     let simulation, tick = 0, eventId = 0, winner = null, reason = '', disposed = false;
     const events = [], inputs = seats.map(() => ({ seq: 0, tick: -Infinity, target: null }));
     const disconnected = [0, 0];
@@ -75,7 +75,7 @@ export function createAuthority({ CANNON, bodies, matchId, seats, random = Math.
         expire(now) { disconnected.forEach((deadline, seat) => { if (deadline && now >= deadline) forfeit(seat); }); },
         snapshot() {
             const pack = b => ({ x: b.position.x, z: b.position.z, vx: b.velocity.x, vz: b.velocity.z });
-            return { protocolVersion: PROTOCOL_VERSION, matchId, tick, seats: [...seats],
+            return { protocolVersion: PROTOCOL_VERSION, matchId, tick, seats: [...seats], colors: [...colors],
                 phase: match.state.phase, remaining: match.state.remaining, scores: [match.state.playerScore, match.state.cpuScore],
                 serving: match.state.servingPlayer ? 0 : 1, winner, reason, ack: inputs.map(i => i.seq),
                 disconnected: disconnected.map(Boolean), puck: pack(simulation.bodies.puckBody),

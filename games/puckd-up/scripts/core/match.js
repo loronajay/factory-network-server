@@ -73,13 +73,13 @@ export function createMatch({ config = {}, emit = () => {
                 emit({ type: 'serve', servingPlayer: state.servingPlayer });
             }
         },
-        beginOnline({ matchId, opponentName }) {
-            Object.assign(state, { mode: 'online', matchId, opponentName, playerScore: 0, cpuScore: 0, phase: 'faceoff', remaining: .65, winner: null, reason: '', disconnected: false });
+        beginOnline({ matchId, opponentName, playerColors }) {
+            Object.assign(state, { mode: 'online', matchId, opponentName, playerColors: [...playerColors], playerScore: 0, cpuScore: 0, phase: 'faceoff', remaining: .65, winner: null, reason: '', disconnected: false });
             screen('playing');
             emit({ type: 'match-start' });
         },
         returnOnline() {
-            Object.assign(state, { mode: 'cpu', matchId: '', phase: 'idle', remaining: 0, playerScore: 0, cpuScore: 0 });
+            Object.assign(state, { mode: 'cpu', matchId: '', playerColors: null, phase: 'idle', remaining: 0, playerScore: 0, cpuScore: 0 });
             screen('online');
             emit({ type: 'match-reset' });
         },

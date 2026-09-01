@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createAuthority } from './authority.js';
 import { createFixedStep } from '../scripts/core/fixed-step.js';
-import { PROTOCOL_VERSION, RECONNECT_MS, SNAPSHOT_HZ } from '../scripts/online/protocol.js';
+import { isPlayerColor, PROTOCOL_VERSION, RECONNECT_MS, SNAPSHOT_HZ } from '../scripts/online/protocol.js';
 
 // Game-specific adapter for the existing generic Factory Network lobby hooks.
 export function createLobbyGame({ CANNON, broadcast, update, now = Date.now, schedule = setInterval, cancel = clearInterval, makeAuthority = createAuthority }) {
@@ -18,7 +18,9 @@ export function createLobbyGame({ CANNON, broadcast, update, now = Date.now, sch
     }
     function init(lobby, startAt) {
         stopTimer(lobby); lobby.puck?.dispose();
-        lobby.puck = makeAuthority({ CANNON, matchId: randomUUID(), seats: [...lobby.members] });
+        const seats = [...lobby.members];
+        const colors = seats.map(id => lobby.publicPlayerFields?.get(id)?.playerColor);
+        lobby.puck = makeAuthority({ CANNON, matchId: randomUUID(), seats, colors });
         lobby.puckRematch = new Set();
         lobby.status = 'started'; lobby.startAt = startAt;
     }
@@ -69,8 +71,9 @@ export function createLobbyGame({ CANNON, broadcast, update, now = Date.now, sch
             if (type === 'puck_ready' && lobby.status === 'open') {
                 if (value?.protocolVersion !== PROTOCOL_VERSION || lobby.settings?.protocolVersion !== PROTOCOL_VERSION)
                     return rejected('Multiplayer version mismatch. Update both clients and create a new lobby.');
+                if (!isPlayerColor(value.playerColor)) return rejected('Choose a valid custom player color.');
                 lobby.publicPlayerFields ||= new Map();
-                lobby.publicPlayerFields.set(id, { ready: value.ready === true, protocolVersion: PROTOCOL_VERSION });
+                lobby.publicPlayerFields.set(id, { ready: value.ready === true, protocolVersion: PROTOCOL_VERSION, playerColor: value.playerColor });
                 if (game.canStart(lobby)) begin(lobby);
                 else update(lobby);
                 return { handled: true };

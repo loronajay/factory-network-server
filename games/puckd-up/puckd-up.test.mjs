@@ -10,8 +10,8 @@ function peer(id) {
     clients.set(id, ws);
     return { ws, send: data => handleClientMessage(id, ws, JSON.stringify(data)) };
 }
-const request = { type: 'find_lobby', gameId: 'puckd-up', minPlayers: 2, maxPlayers: 2, settings: { protocolVersion: 2, targetScore: 7 } };
-const ready = { type: 'lobby_message', messageType: 'puck_ready', value: JSON.stringify({ protocolVersion: 2, ready: true }) };
+const request = { type: 'find_lobby', gameId: 'puckd-up', minPlayers: 2, maxPlayers: 2, settings: { protocolVersion: 3, targetScore: 7 } };
+const ready = { type: 'lobby_message', messageType: 'puck_ready', value: JSON.stringify({ protocolVersion: 3, ready: true, playerColor: '#c24b86' }) };
 
 test('real registry starts only after both ready and never relays forged puck/results', () => {
     const a = peer('puck-a'), b = peer('puck-b');
