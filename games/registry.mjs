@@ -33,6 +33,7 @@ import { definition as miniHoops } from "./mini-hoops/server/mini-hoops.game.mjs
 import { definition as miniHoopsHorse } from "./mini-hoops/server/mini-hoops-horse.game.mjs";
 import { definition as hideAndSeek } from "./hide-and-seek/server/hide-and-seek.game.mjs";
 import { definition as puckdUp } from "./puckd-up/server/puckd-up.game.mjs";
+import { definition as sharkHall } from "./shark-hall/server/shark-hall.game.mjs";
 
 const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 
@@ -42,7 +43,7 @@ const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 let definitions = null;
 function allDefinitions() {
   if (!definitions) {
-    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse, hideAndSeek, puckdUp];
+    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse, hideAndSeek, puckdUp, sharkHall];
   }
   return definitions;
 }

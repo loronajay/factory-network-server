@@ -2,7 +2,7 @@
   "generator": "games/hide-and-seek/tools/mirror-sim.mjs",
   "files": {
     "modules/game-config.js": "89726e0e12017d62a4a96eff1616cc1bd3db96a4023f9b0da1e7f0c21ed72473",
-    "map-catalog.js": "58f3082cba63489c39073b51e7a0f800c7c9933a8ba323b987ed7424bdb42f90",
+    "map-catalog.js": "7a37f0ea1fe734bdee3a1e0681cecd865f4176d4d3d488c6f472ebfc8557ab9f",
     "layout.js": "b9d516d224f6f91f1af4848c34ecafe09dcaac62ead54a436326e3c9ebb232df",
     "hotel-plan.js": "e2ac05c61c30e5e489142d5414f5df42044cac2f75e2538e9a542bb53c606832",
     "mall-plan.js": "c6ee659396b23fbb16968368ba690be0ab03ff0d8aef2f0c867656154cf1ddda",

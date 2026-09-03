@@ -57,9 +57,15 @@
   ]);
 
   const HOSPITAL_DEMONS = Object.freeze([
-    Object.freeze({ id: 'surgeon', name: 'The Surgeon', hunts: true, accentColor: 0x315951, eyeColor: 0x9bffe1 }),
-    Object.freeze({ id: 'matron', name: 'The Matron', hunts: false, accentColor: 0x722837, eyeColor: 0xff6677 }),
-    Object.freeze({ id: 'orderly', name: 'The Orderly', hunts: false, accentColor: 0x45566c, eyeColor: 0x98cfff }),
+    Object.freeze({
+      id: 'surgeon', name: 'The Surgeon', hunts: true, accentColor: 0x315951, eyeColor: 0x9bffe1,
+    }),
+    Object.freeze({
+      id: 'matron', name: 'The Matron', hunts: false, accentColor: 0x722837, eyeColor: 0xff6677,
+    }),
+    Object.freeze({
+      id: 'orderly', name: 'The Orderly', hunts: false, accentColor: 0x45566c, eyeColor: 0x98cfff,
+    }),
   ]);
 
   const MAPS = Object.freeze([

@@ -109,6 +109,22 @@ the lobby it left.
 on its seat limits, and a search that omits `minPlayers`/`maxPlayers` is sanitized to the server-wide
 default of **2-6**. Any game whose `lobbyLimits` differ from that must have its client *send* them,
 or every guest silently opens a room of their own and nobody can see anybody.
+`shark-hall` is the **turn-based** server-authoritative shape, and the cheapest one here to
+copy. A client sends a stroke — `{ angle, power, spinX, spinY }`, plus a cue-ball placement when it
+holds ball in hand — and this server runs the cabinet's own pure physics over the table it is
+holding, asks the cabinet's own rules what happened, and publishes the stroke together with the
+table as it stood *before* it. The clients replay that stroke **only to animate it** and then snap
+to the state that came with it, so one shot costs about sixty bytes however long the balls roll and
+no client ever resolves a rule. Every message that would state an outcome is refused with
+`SERVER_AUTHORITY`. Its `shared/sim/` is a byte-for-byte mirror of the cabinet's `scripts/sim/`,
+written by `node tools/mirror-sim.mjs` in `javascript-games/games/shark-hall` and guarded by
+`mirror.test.mjs` against a manifest committed in both repos — a sim change must deploy both
+together. A match is a **race to one, three or five racks**, and the race length is a lobby setting
+(`raceTo`) rather than a game message for the usual reason: matchmaking compares settings, and two
+players who disagree about how long the match is must never be paired. Because there is no clock in
+the whole game, it needs no tick and no bridge — a lobby game and a pure engine are the entire
+server side.
+
 `mini-tactics` is a **config-only lobby game** (2-4 players, FFA +
 2v2 teams): its `lobbyGame` carries `lobbyLimits` only — no match engine — because
 the match runs as deterministic client lockstep over the generic lobby relay
@@ -223,7 +239,7 @@ All of the following live in `src/state.mjs` and are imported wherever needed.
 ## Tests
 
 `npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `src/no-game-literals.test.mjs` (the game-agnostic guardrail), `games/registry.test.mjs` (strategy/settings/lobby resolution), `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`,
-`games/mini-hoops/mini-hoops.test.mjs` + `games/mini-hoops/mini-hoops-horse.test.mjs`, `games/hide-and-seek/hide-and-seek.test.mjs` + `games/hide-and-seek/mirror.test.mjs`, the three `games/circuit-siege/*.test.mjs` suites, and the three `games/speed-demon/*.test.mjs` suites (replay/mirror guard, match engine, server bridge).
+`games/mini-hoops/mini-hoops.test.mjs` + `games/mini-hoops/mini-hoops-horse.test.mjs`, `games/hide-and-seek/hide-and-seek.test.mjs` + `games/hide-and-seek/mirror.test.mjs`, the three `games/circuit-siege/*.test.mjs` suites, the three `games/speed-demon/*.test.mjs` suites (replay/mirror guard, match engine, server bridge), and `games/shark-hall/mirror.test.mjs` + `games/shark-hall/shark-hall.test.mjs`.
 
 **`games/speed-demon/replay.test.mjs` is a mirror guard, not a unit test.** Its
 `shared/` folder is a *copy* of the cabinet's pure sim, and the failure mode of

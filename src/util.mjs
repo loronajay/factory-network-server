@@ -68,6 +68,11 @@ export function sanitizeLobbySettings(settings = {}) {
     duration: Number.isFinite(miniHoopsDuration) ? Math.floor(miniHoopsDuration) : 30,
     locationId: typeof settings.locationId === "string" ? settings.locationId.trim().slice(0, 32) : "bedroom",
     ballId: typeof settings.ballId === "string" ? settings.ballId.trim().slice(0, 32) : "basketball",
+    // How many racks a match is played to. A bounded primitive for the same
+    // reason `ranked` is one: matchmaking compares settings, and two players who
+    // disagree about how long the match is must never be paired. Games that
+    // never send it stay at 1 on both sides and are unaffected.
+    raceTo: clampInt(settings.raceTo, 1, 9, 1),
   };
 }
 
