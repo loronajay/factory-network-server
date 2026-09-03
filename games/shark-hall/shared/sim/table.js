@@ -13,6 +13,7 @@ import {
   CORNER_POCKET_RADIUS,
   HALF_LENGTH,
   HALF_WIDTH,
+  JAW_RADIUS,
   SIDE_GAP,
   SIDE_POCKET_RADIUS,
 } from "./constants.js";
@@ -41,26 +42,36 @@ export const POCKETS = Object.freeze([
  *
  * Every pocket mouth is bounded by two of these. Without them a ball that just
  * misses a pocket bounces off a square invisible corner and leaves at an angle
- * no real table produces; with them it rattles the jaw the way it should. The
- * centres are exactly where the cushion segments end, which is why both come
- * from this file.
+ * no real table produces; with them it rattles the jaw the way it should. They
+ * sit where the cushion segments end, which is why both come from this file.
+ *
+ * THE CENTRES ARE SET BACK BEHIND THE NOSE LINE BY EXACTLY `JAW_RADIUS`, so
+ * each circle is TANGENT to the cushion face rather than straddling it. That
+ * one offset is the difference between a jaw and a bumper. Centred on the nose
+ * line the circle bulged a full jaw radius out over the cloth, and a ball
+ * hugging a rail — which rides one ball radius off the nose line, well inside
+ * the circle — was shoved off the rail before it ever reached the mouth. Every
+ * shot along a wall into a corner was blocked by an obstacle no real table has.
+ * Tangent, a ball rolling frozen to the rail grazes the jaw and passes, and the
+ * circle only bites once the ball is past the nose line and into the mouth,
+ * which is the only place a jaw exists.
  */
 export const JAWS = Object.freeze(
   [
     // Side pockets, on both long rails.
     ...[-1, 1].flatMap((side) => [
-      { x: -SIDE_GAP, z: side * HALF_WIDTH },
-      { x: SIDE_GAP, z: side * HALF_WIDTH },
+      { x: -SIDE_GAP, z: side * (HALF_WIDTH + JAW_RADIUS) },
+      { x: SIDE_GAP, z: side * (HALF_WIDTH + JAW_RADIUS) },
     ]),
     // Corner pockets, approached along the long rails.
     ...[-1, 1].flatMap((side) => [
-      { x: -HALF_LENGTH + CORNER_GAP, z: side * HALF_WIDTH },
-      { x: HALF_LENGTH - CORNER_GAP, z: side * HALF_WIDTH },
+      { x: -HALF_LENGTH + CORNER_GAP, z: side * (HALF_WIDTH + JAW_RADIUS) },
+      { x: HALF_LENGTH - CORNER_GAP, z: side * (HALF_WIDTH + JAW_RADIUS) },
     ]),
     // The same corners, approached along the short rails.
     ...[-1, 1].flatMap((side) => [
-      { x: -HALF_LENGTH, z: side * (HALF_WIDTH - CORNER_GAP) },
-      { x: HALF_LENGTH, z: side * (HALF_WIDTH - CORNER_GAP) },
+      { x: -(HALF_LENGTH + JAW_RADIUS), z: side * (HALF_WIDTH - CORNER_GAP) },
+      { x: HALF_LENGTH + JAW_RADIUS, z: side * (HALF_WIDTH - CORNER_GAP) },
     ]),
   ].map((jaw) => Object.freeze(jaw)),
 );
