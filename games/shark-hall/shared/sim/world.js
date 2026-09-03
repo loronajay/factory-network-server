@@ -17,7 +17,7 @@
 
 import { SETTLE_MS, SIM_STEP, REST_SPEED } from "./constants.js";
 import { CUE, cloneBalls, cueBall, rackBalls, speedOf, stillBall } from "./balls.js";
-import { applyClothFriction, collideAll, collideRails } from "./physics.js";
+import { applyClothFriction, clampToCloth, collideAll, collideRails } from "./physics.js";
 import { captureHangingBalls, findPocket, pocketBall } from "./pockets.js";
 import { strikeCue } from "./shot.js";
 
@@ -68,7 +68,13 @@ export function createWorld() {
     const firstContact = collideAll(balls, events);
     if (report.firstHit === null && firstContact !== null) report.firstHit = firstContact;
 
-    for (const ball of balls) if (!ball.pocketed) applyClothFriction(ball, dt);
+    for (const ball of balls) {
+      if (ball.pocketed) continue;
+      applyClothFriction(ball, dt);
+      // Last, so nothing after it can leave a ball inside a cushion for the
+      // frame the renderer is about to draw. See `clampToCloth`.
+      clampToCloth(ball);
+    }
   }
 
   const everythingStopped = () => balls.every((ball) => ball.pocketed || speedOf(ball) < REST_SPEED);

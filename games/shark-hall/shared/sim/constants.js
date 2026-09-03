@@ -76,10 +76,46 @@ export const ROLL_FRICTION = 0.012;
 export const SPIN_DECAY = 0.72;
 
 export const BALL_RESTITUTION = 0.94;
-export const CUSHION_RESTITUTION = 0.84;
+
+/**
+ * Cushion restitution, which is NOT a constant on a real table.
+ *
+ * Rubber gets less elastic the harder it is hit: a measured cushion returns
+ * around 0.86 of a slow ball's speed and only about 0.67 of a break-speed one.
+ * A flat number has to pick one of those, and 0.84 picked the slow end, which is
+ * what made a hard shot ricochet around the table for six seconds like a
+ * pinball. `cushionRestitution` in `physics.js` reads these three.
+ *
+ * LOW is the value approached as the impact speed goes to zero, FALLOFF is how
+ * much is lost per m/s of closing speed, and MIN is the floor a break cannot
+ * push it below.
+ */
+export const CUSHION_RESTITUTION_LOW = 0.88;
+export const CUSHION_RESTITUTION_FALLOFF = 0.038;
+export const CUSHION_RESTITUTION_MIN = 0.66;
+
 /** Tangential friction caps, as a fraction of the normal impulse (Coulomb). */
 export const BALL_FRICTION = 0.045;
-export const CUSHION_FRICTION = 0.16;
+
+/**
+ * Cushion tangential friction — deliberately far below the rubber's real mu.
+ *
+ * This is a FIT, not a material constant, and the reason is the model. The
+ * contact here is at the ball's equator, so a ball's forward roll contributes
+ * nothing to the horizontal slip along the rail and the along-rail component
+ * reads as a pure skid. Charge Coulomb friction at the rubber's actual mu
+ * against that and the rail scrubs the tangential component almost to a stop:
+ * at 0.16 a ball arriving 45 degrees off the normal left at 40, where a real
+ * cushion sends it out at about 50. A real cushion strikes ABOVE centre and the
+ * ball climbs out of the rubber rather than rolling sideways along it, which is
+ * why the observed rebound is LONGER than the incidence rather than shorter.
+ *
+ * 0.055 reproduces the measured angles (`tests/physics.test.js` asserts them)
+ * while leaving enough bite for running English to lengthen the angle and add
+ * speed. Raise it and every rail shortens; drop it to zero and English stops
+ * coming off the cushion at all.
+ */
+export const CUSHION_FRICTION = 0.055;
 
 /** Radius of the rounded pocket facings the jaws are modelled with. */
 export const JAW_RADIUS = 0.02;

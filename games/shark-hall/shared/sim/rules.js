@@ -101,6 +101,20 @@ export function resolveShot(balls, { shooter, groups, isBreak }, report) {
 
   const foul = foulReason !== null;
 
+  /**
+   * Where a foul puts the cue ball.
+   *
+   * Anywhere on the table, EXCEPT behind the head string for a scratch — and
+   * except behind the head string for every foul on the break, which is the
+   * part that was missing. Miss the rack entirely and the old answer was ball in
+   * hand anywhere, so the incoming player could set up BEHIND a full rack and
+   * break it backwards. No 8-ball ruleset allows that: an illegal break hands
+   * the table over in the kitchen, the same as a scratch does, because the whole
+   * point of the head string is that nobody starts a rack from the far side of
+   * it.
+   */
+  const foulZone = scratch || isBreak ? ZONE_KITCHEN : ZONE_ANYWHERE;
+
   // --- the 8 -------------------------------------------------------------
   if (eightDown) {
     // Rule 5. Every ruleset does something different here; the house rule is the
@@ -169,7 +183,7 @@ export function resolveShot(balls, { shooter, groups, isBreak }, report) {
     groups: nextGroups,
     turnChanged,
     nextShooter: turnChanged ? other : shooter,
-    ballInHand: foul ? (scratch ? ZONE_KITCHEN : ZONE_ANYWHERE) : ZONE_NONE,
+    ballInHand: foul ? foulZone : ZONE_NONE,
     winner: null,
     kicker: foul ? "Foul" : turnChanged ? "Turn over" : "Still shooting",
     reason: foul

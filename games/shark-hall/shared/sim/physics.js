@@ -28,7 +28,9 @@ import {
   BALL_RESTITUTION,
   CORNER_GAP,
   CUSHION_FRICTION,
-  CUSHION_RESTITUTION,
+  CUSHION_RESTITUTION_FALLOFF,
+  CUSHION_RESTITUTION_LOW,
+  CUSHION_RESTITUTION_MIN,
   GRAVITY,
   HALF_LENGTH,
   HALF_WIDTH,
@@ -115,6 +117,18 @@ export function collideBalls(a, b) {
 }
 
 /**
+ * How elastic the cushion is for an impact arriving at this speed.
+ *
+ * Exported because it is a claim about the table rather than an implementation
+ * detail, and `tests/physics.test.js` checks the claim directly. Linear between
+ * the low-speed value and the floor; see the constants for why it is not flat.
+ */
+export function cushionRestitution(closingSpeed) {
+  const e = CUSHION_RESTITUTION_LOW - CUSHION_RESTITUTION_FALLOFF * Math.abs(closingSpeed);
+  return Math.max(CUSHION_RESTITUTION_MIN, Math.min(CUSHION_RESTITUTION_LOW, e));
+}
+
+/**
  * Resolve a contact with a cushion whose inward normal is (nx, nz).
  *
  * Returns the closing speed, or 0 if the ball was already leaving. The contact
@@ -130,7 +144,7 @@ export function collideCushion(ball, nx, nz) {
   const normalSpeed = cvx * nx + cvz * nz;
   if (normalSpeed >= 0) return 0;
 
-  const jn = -(1 + CUSHION_RESTITUTION) * normalSpeed * BALL_MASS;
+  const jn = -(1 + cushionRestitution(normalSpeed)) * normalSpeed * BALL_MASS;
   applyImpulse(ball, jn * nx, jn * nz, rx, rz);
 
   const tx = -nz;
@@ -205,6 +219,37 @@ export function collideRails(ball, sink) {
   for (const jaw of JAWS) report("jaw", collideJaw(ball, jaw.x, jaw.z));
 
   return contacts;
+}
+
+/**
+ * Push a ball back inside the nose line, without touching its velocity.
+ *
+ * `collideRails` clamps as part of resolving a bounce, but it runs BEFORE
+ * `collideAll` in the substep, and separating two overlapping balls can shove
+ * one of them a few millimetres into a rail that has already been resolved this
+ * step. It is corrected on the next substep either way, so the sim never cared
+ * — but the renderer draws the frame in between, and a ball visibly sinking
+ * into the cushion is exactly the artefact the cushion mesh was moved to fix.
+ * So the last thing a substep does is put every ball back on the cloth.
+ *
+ * Position only, deliberately: a ball nudged out of a rail by its neighbour has
+ * not struck the rail, and reporting a contact here would invent cushions the
+ * "rail after contact" rule would then count.
+ */
+export function clampToCloth(ball) {
+  const overLongGap = Math.abs(ball.x) <= SIDE_GAP || Math.abs(ball.x) >= HALF_LENGTH - CORNER_GAP;
+  if (!overLongGap) {
+    const limit = HALF_WIDTH - BALL_RADIUS;
+    if (ball.z > limit) ball.z = limit;
+    else if (ball.z < -limit) ball.z = -limit;
+  }
+
+  const overShortGap = Math.abs(ball.z) >= HALF_WIDTH - CORNER_GAP;
+  if (!overShortGap) {
+    const limit = HALF_LENGTH - BALL_RADIUS;
+    if (ball.x > limit) ball.x = limit;
+    else if (ball.x < -limit) ball.x = -limit;
+  }
 }
 
 /**

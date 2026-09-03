@@ -37,6 +37,66 @@ export function isLegalCuePosition(balls, x, z, zone = ZONE_ANYWHERE) {
   return true;
 }
 
+/** Margin off the rails a placed ball keeps, and the gap it keeps off its neighbours. */
+const RAIL_MARGIN = BALL_RADIUS * 1.35;
+const BALL_GAP = 2.08 * BALL_RADIUS;
+
+const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+
+/**
+ * The legal spot the player is ASKING for, dragged rather than chosen.
+ *
+ * This is the difference between placement that feels like moving a ball and
+ * placement that feels like a form rejecting a field. `isLegalCuePosition` is a
+ * yes/no, and a drag handler that only accepts a yes leaves the ball frozen at
+ * the last legal pixel while the pointer walks away, then teleports it back when
+ * the pointer happens to re-enter — which reads as snapping, because it is.
+ *
+ * So the pointer is never refused: it is CLAMPED. Off the end of the cloth the
+ * ball slides along the rail; past the head string it slides along the string;
+ * into another ball it slides around the outside of it. Every one of those is
+ * the ball following the finger, which is the only thing the player asked for.
+ *
+ * Resolved in passes because the three constraints fight: sliding off one ball
+ * can push into the next or into a rail. Eight is far more than a table ever
+ * needs, and the fallback is the spiral search, so this still cannot return an
+ * illegal answer.
+ */
+export function clampCuePosition(balls, x, z, zone = ZONE_ANYWHERE) {
+  const limit = (px, pz) => {
+    const nx = zone === ZONE_KITCHEN ? Math.min(px, HEAD_STRING_X) : px;
+    return {
+      x: clamp(nx, -(HALF_LENGTH - RAIL_MARGIN), HALF_LENGTH - RAIL_MARGIN),
+      z: clamp(pz, -(HALF_WIDTH - RAIL_MARGIN), HALF_WIDTH - RAIL_MARGIN),
+    };
+  };
+
+  let point = limit(x, z);
+  for (let pass = 0; pass < 8; pass++) {
+    let pushed = false;
+    for (const ball of balls) {
+      if (ball.n === CUE || ball.pocketed) continue;
+      const dx = point.x - ball.x;
+      const dz = point.z - ball.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance >= BALL_GAP) continue;
+      pushed = true;
+      // A hair past touching, because `isLegalCuePosition` compares strictly and
+      // a push to exactly the gap can land a float below it.
+      const reach = BALL_GAP * 1.0002;
+      // Dead centre has no direction to slide in; any one will do.
+      const ux = distance > 1e-6 ? dx / distance : 1;
+      const uz = distance > 1e-6 ? dz / distance : 0;
+      point = { x: ball.x + ux * reach, z: ball.z + uz * reach };
+    }
+    point = limit(point.x, point.z);
+    if (!pushed) break;
+  }
+
+  if (isLegalCuePosition(balls, point.x, point.z, zone)) return point;
+  return findLegalCuePosition(balls, point.x, point.z, zone);
+}
+
 /**
  * The nearest legal spot to where the caller wanted the cue ball.
  *
