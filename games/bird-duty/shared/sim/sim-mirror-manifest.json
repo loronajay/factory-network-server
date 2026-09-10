@@ -1,0 +1,15 @@
+{
+  "generator": "games/bird-duty/tools/mirror-sim.mjs",
+  "files": {
+    "coordinates.js": "55daef2183360ccf1f4b14d4feacdac7174a70274650489fd739b27c492889ab",
+    "hotseat-session.js": "cd9a68ace549053fdcb4d5eccd16c0143dd554ad31fe929fbff0404db56d7a59",
+    "input.js": "5a0782b053320a86b6b8e83050ab19ed221356dc95e0c1faf0306812df259e1f",
+    "match-sim.js": "62a3ab34c06e5b210d0b989bfcc4198a5db155c45a241b6ceb97f348591d5b97",
+    "npcs.js": "e56abf7a7fe022aa1365f5c409ad360d9388f128a320ddeadd37254ed2945c9c",
+    "online-match.js": "1a5173048763fba116ce7050f9b642dc768a37aad7542e9610288830bc1caa54",
+    "online-sync.js": "3f38d796b902f78755372d50c39b04a9a645f6946fa8fa4fdc255a7958c66856",
+    "play-session.js": "24c673db8fde11feee0fc53efcbdc4c307146e24f06c29ea10753eecb85fd401",
+    "player.js": "0ee5863e92caaea0726ff45d849006c7b1e2b38a9fea82424ae8a600948a9e8e",
+    "poop.js": "d066dbf1fb5b84d17f4b1b659e4d483e2210bbef39c5f96956930ecaf1e8b789"
+  }
+}
