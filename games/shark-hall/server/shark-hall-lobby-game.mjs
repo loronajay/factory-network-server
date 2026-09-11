@@ -17,11 +17,13 @@ import {
   SHARK_HALL_PROTOCOL_VERSION,
   SHARK_HALL_RECONNECT_GRACE_MS,
   PHASE_COMPLETE,
+  aimSeatFor,
   applySharkDisconnect,
   applySharkReconnect,
   applySharkShot,
   createSharkMatchState,
   requestSharkRematch,
+  sanitizeSharkAim,
   serializeSharkMatch,
 } from "./shark-hall-match-engine.mjs";
 
@@ -94,7 +96,12 @@ export const sharkHallLobbyGame = {
     if (messageType === "shark_profile") {
       const raw = parseValue(value);
       if (!(lobby.sharkProfiles instanceof Map)) lobby.sharkProfiles = new Map();
-      lobby.sharkProfiles.set(clientId, { protocolVersion: Number(raw?.protocolVersion) || 0 });
+      const protocolVersion = Number(raw?.protocolVersion) || 0;
+      // Only a CHANGE is news. The lobby update this sends is what the client
+      // answers with another announcement, so acknowledging an unchanged one
+      // was an infinite ping-pong on every Shark Hall lobby.
+      if (lobby.sharkProfiles.get(clientId)?.protocolVersion === protocolVersion) return { handled: true };
+      lobby.sharkProfiles.set(clientId, { protocolVersion });
       sendLobbyUpdated(lobby);
       return { handled: true };
     }
@@ -113,6 +120,24 @@ export const sharkHallLobbyGame = {
         match: serializeSharkMatch(applied.match, Date.now()),
       });
       if (lobby.status === "ended") sendLobbyUpdated(lobby);
+      return { handled: true };
+    }
+
+    if (messageType === "shark_aim") {
+      // The shooter lining up, relayed to the other seat so they can watch the
+      // stick swing. Dropped silently rather than refused when it is not the
+      // shooter's: an aim that lands a beat after the stroke it belonged to is
+      // ordinary, and an error toast for it would fire on every shot.
+      const seat = aimSeatFor(lobby.sharkMatch, clientId);
+      if (seat < 0) return { handled: true };
+      broadcastToLobby(lobby.roomCode, {
+        event: "message",
+        scope: "lobby",
+        messageType: "shark_aim",
+        value: JSON.stringify({ seat, ...sanitizeSharkAim(parseValue(value)) }),
+        senderId: clientId,
+        roomCode: lobby.roomCode,
+      }, clientId);
       return { handled: true };
     }
 

@@ -177,6 +177,41 @@ function sanitizeStroke(raw) {
 }
 
 /**
+ * The shooter's aim in progress, for the other seat to watch.
+ *
+ * A PICTURE, NOT A REQUEST. It is relayed and never applied: no field of it
+ * touches the match, and the stroke that follows is scored from the request
+ * that arrives with it. Sanitized anyway, because the server is what stands
+ * between one client's numbers and the other client's renderer.
+ */
+export function sanitizeSharkAim(raw) {
+  const contact = clampContact(raw?.spinX, raw?.spinY);
+  const aim = {
+    angle: normalizeAngle(finite(raw?.angle, -1e6, 1e6, 0)),
+    spinX: contact.spinX,
+    spinY: contact.spinY,
+    charge: finite(raw?.charge, 0, 1, 0),
+  };
+  if (raw?.place && typeof raw.place === "object") {
+    aim.place = { x: finite(raw.place.x, -10, 10, 0), z: finite(raw.place.z, -10, 10, 0) };
+  }
+  return aim;
+}
+
+/**
+ * Which seat an aim may be relayed for, or -1.
+ *
+ * Only the shooter, and only while there is a shot to line up: an aim from the
+ * other seat is noise at best, and one arriving on a paused or decided table
+ * would draw a stick on a rack nobody is playing.
+ */
+export function aimSeatFor(match, clientId) {
+  if (!match || match.phase !== PHASE_AIMING) return -1;
+  const seat = seatIndexOf(match, clientId);
+  return seat >= 0 && seat === match.shooter ? seat : -1;
+}
+
+/**
  * Put the cue ball where the shooter asked, as near as the rules allow.
  *
  * A request outside the granted zone is pulled to the nearest legal spot rather

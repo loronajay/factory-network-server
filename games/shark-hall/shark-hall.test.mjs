@@ -7,6 +7,7 @@ import {
   PHASE_COMPLETE,
   PHASE_PAUSED,
   SHARK_HALL_PROTOCOL_VERSION,
+  aimSeatFor,
   applySharkDisconnect,
   applySharkReconnect,
   applySharkShot,
@@ -15,6 +16,7 @@ import {
   playShot,
   requestSharkRematch,
   sanitizeRaceTo,
+  sanitizeSharkAim,
   serializeSharkMatch,
 } from "./server/shark-hall-match-engine.mjs";
 
@@ -40,12 +42,14 @@ const at = (n, x, z) => ({ n, x, z, vx: 0, vz: 0, wx: 0, wy: 0, wz: 0, pocketed:
 // geometry change that moves a pocket fails these tests loudly instead of
 // quietly potting something else. It is a CUT and not a straight shot on
 // purpose: the cue ball follows a straight pot into the same pocket, which
-// scores as a scratch on the 8 and hands the rack to the other seat.
+// scores as a scratch on the 8 and hands the rack to the other seat. The
+// thickness of the cut is one ball radius: at two, the cushion and jaw retune
+// (mirrored 2026-08) sent the cue ball into the same pocket after the 8.
 const BALL_RADIUS = 0.028575;
 const SIDE_POT_Z = 0.535;
 const CUE_SPOT = { x: -0.6, z: 0.25 };
 const CUT_AT_SIDE = {
-  angle: Math.atan2(SIDE_POT_Z - 2 * BALL_RADIUS - CUE_SPOT.z, 0 - CUE_SPOT.x),
+  angle: Math.atan2(SIDE_POT_Z - BALL_RADIUS - CUE_SPOT.z, 0 - CUE_SPOT.x),
   power: 0.4,
   spinX: 0,
   spinY: 0,
@@ -134,6 +138,38 @@ test("the adapter refuses every message that would state an outcome", () => {
 test("an unknown message is left for the generic relay", () => {
   const result = sharkHallLobbyGame.handleMessage({ roomCode: "SHARK" }, "socket-a", "chat", "{}");
   assert.equal(result.handled, false);
+});
+
+// ---------------------------------------------------------------------------
+// Watching the other seat line up
+// ---------------------------------------------------------------------------
+
+test("only the shooter's aim is relayed, and only while there is a shot to line up", () => {
+  const match = createSharkMatchState(lobby());
+  assert.equal(aimSeatFor(match, "socket-a"), 0);
+  assert.equal(aimSeatFor(match, "socket-b"), -1, "the other seat has nothing to line up");
+  assert.equal(aimSeatFor(match, "socket-c"), -1, "a spectator is not a seat");
+  assert.equal(aimSeatFor(applySharkDisconnect(match, "socket-b", 1_000), "socket-a"), -1, "a paused table is not being aimed at");
+  assert.equal(aimSeatFor({ ...match, phase: PHASE_COMPLETE }, "socket-a"), -1);
+});
+
+test("an aim is sanitized like a stroke and never touches the match", () => {
+  const aim = sanitizeSharkAim({ angle: 1e9, spinX: 50, spinY: -50, charge: 7, place: { x: 99, z: "no" } });
+  assert.ok(Math.abs(aim.angle) <= Math.PI);
+  assert.ok(Math.hypot(aim.spinX, aim.spinY) <= 1.0001);
+  assert.equal(aim.charge, 1);
+  assert.deepEqual(aim.place, { x: 10, z: 0 });
+  assert.equal(sanitizeSharkAim({}).place, undefined);
+
+  // The adapter relays it and applies nothing: the table is where it was.
+  const room = { ...lobby(), sharkMatch: createSharkMatchState(lobby()) };
+  const before = JSON.stringify(room.sharkMatch);
+  const relayed = sharkHallLobbyGame.handleMessage(room, "socket-a", "shark_aim", JSON.stringify({ angle: 1, place: { x: -0.9, z: 0 } }));
+  assert.equal(relayed.handled, true);
+  assert.equal(relayed.error, undefined);
+  assert.equal(JSON.stringify(room.sharkMatch), before, "an aim is a picture, not a placement");
+  // And from the wrong seat it is dropped without a word, not refused.
+  assert.deepEqual(sharkHallLobbyGame.handleMessage(room, "socket-b", "shark_aim", "{}"), { handled: true });
 });
 
 // ---------------------------------------------------------------------------
