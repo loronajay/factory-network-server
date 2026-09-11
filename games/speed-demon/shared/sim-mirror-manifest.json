@@ -1,0 +1,28 @@
+{
+  "generatedBy": "javascript-games/games/speed-demon/tools/mirror-sim.mjs",
+  "files": {
+    "constants.mjs": "ebfad9b1aa9b9fcfb1c1bf26696cdc269b4c1b305214696886cb89c4a2dea23b",
+    "engine.mjs": "e455411d242f80ebaf91106769529a295c31a36137b3ebc8ea31dc65ae85b14b",
+    "gate.mjs": "1f93737d4021d13edae0aaaa296539d0a11dddd157162cc9040fad37abb44636",
+    "grading.mjs": "3d52039da8ef29e90a51c8bb7dd5c4dc3b707f84c52f7d751c6605cfe5025eef",
+    "launch.mjs": "c3caa2cae6911524af4df7813a05c10d3ae0e5268245798418586efea412159c",
+    "race.mjs": "40de932ca61ee1f2f3b580e3d99e93d34518e3eae68e0a3736be2ac7b0c6081f",
+    "input-log.mjs": "5092574940fc3321880b5ea01ad3367ca797de051cf69779b022c3a7bb964371",
+    "match.mjs": "f0a6fd9cbcd30b5ef9244b4e89b978e2849ee2116c61997fe11c9b64aa86a4ea",
+    "modes.mjs": "679371abfc2bf0fff5a0e247ad2d3159cc0e4c29688fd04ce63ddeb169d4714a",
+    "circuit/math.mjs": "b310b835b65826d6ba0ed42749c53a6af440de86a32cacc13b3e4fa5195135e2",
+    "circuit/config.mjs": "855ab79f86ae025391dab6eccdbbf87c0d8910f1a84d7957cd71222c1709ecce",
+    "circuit/vehicle.mjs": "8858bc422abca72a14abf8579a784fb70d75f6c622ae084076d7e7a0b4a7efb9",
+    "circuit/collision.mjs": "b3e189d3361916addd10f09e48a754f3a2628579122defafd38a42eed8d59ec1",
+    "circuit/vehicle-collision.mjs": "b5070f48c861df642bbe688d1979f3b9552c53c6d700de2a1541c05dfeb56115",
+    "circuit/cpu-driver.mjs": "52d21464855128c13696dd5341f7cdcf48aabd10b011a905cdd3497f50a866e8",
+    "circuit/difficulty.mjs": "aeec6b76f27993ae6f8ac182d2eafc3cc2fad53951de4e5b4188cf7be6b64db4",
+    "circuit/race.mjs": "6b53ceff7620849b970f2329fbd32e444bdb749554d876720b923064c3424ae4",
+    "circuit/road-mask.mjs": "b4ea1470ef569d19e1178378f5cede1ea6d1e462c6a1770de5111de18f73511a",
+    "circuit/docklands-track-data.mjs": "9025eecb64c0bd233b7cc3316bc39d780ff9ff25bf37a762399ab67e6bbc22d1",
+    "circuit/downtown-canal-track-data.mjs": "c70149e61c1b9e594334d86de9fc371bf92c7f41d8eb1c928a26315b2b20b383",
+    "circuit/tracks.mjs": "75b427c424a98e991880321bfb68ab17ecdb4a812be5e1b51d642555234e2961",
+    "circuit/model-definitions.mjs": "93eb075f6aa8c3ed3140e5f9c7a7e36c2684df1f3e5c58e6cc868c4d7818a0b0",
+    "circuit/assets.mjs": "158e5825072bb234a7fdea485d97e34ff1a332289912713f1ae0e6183cfd173e"
+  }
+}

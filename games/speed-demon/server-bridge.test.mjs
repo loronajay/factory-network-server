@@ -53,6 +53,8 @@ function harness() {
     createRoomCode: () => `ROOM${++codeSeq}`,
     makeSeed: () => 4242,
     sendToClient: (clientId, payload) => sent.push({ clientId, ...payload }),
+    // Rooms are driven by hand through tickActiveRooms against the fake clock.
+    scheduleInterval: null,
   });
   return {
     bridge,
@@ -531,7 +533,7 @@ test("a circuit room rejects missing atlases, then broadcasts authoritative snap
   const code = h.last("room_joined").roomCode;
   h.bridge.handleClientMessage("c_2", {
     type: "join_room", gameId: "speed-demon", roomCode: code, playerId: "p2", displayName: "Bo",
-    modelId: "shutter-z",
+    modelId: "not-a-car",
   });
   h.bridge.handleClientMessage("c_2", roomMessage("ready", { ready: true }));
   assertEqual(h.last("error").code, "CIRCUIT_ATLAS_UNAVAILABLE");
@@ -550,7 +552,44 @@ test("a circuit room rejects missing atlases, then broadcasts authoritative snap
   const snapshots = h.events("sd_circuit_snapshot");
   assertEqual(snapshots.length, 2, "both clients receive one server-owned state");
   assert(snapshots[0].tick > 0);
+  assertEqual(snapshots[0].status, "countdown", "the tree is simulated, not a second clock");
+  assertEqual(snapshots[0].round, start.round);
   assertEqual(h.events("sd_inputs").length, 0, "circuit peers do not author each other's state");
+  // The sim trails the clock by the input delay so a tick sees the input made
+  // for it rather than the one before.
+  const expectedTicks = Math.floor((2200 - 1200 - 150) / 1000 * 120);
+  assertEqual(snapshots[0].tick, expectedTicks);
+});
+
+test("a circuit round is decided by the sim's own finish, never by a drag replay", () => {
+  const h = harness();
+  h.bridge.handleClientMessage("c_1", {
+    type: "create_room", gameId: "speed-demon", playerId: "p1", displayName: "Ana",
+    modelId: "kaido-gts",
+    config: { raceTypeId: "circuit", trackId: "old-town-shrine-loop", laps: 1, bestOf: 1 },
+  });
+  const code = h.last("room_joined").roomCode;
+  h.bridge.handleClientMessage("c_2", {
+    type: "join_room", gameId: "speed-demon", roomCode: code, playerId: "p2", displayName: "Bo",
+    // One of the sixteen models the old hand-written server roster refused.
+    modelId: "vortex-fd",
+  });
+  h.bridge.handleClientMessage("c_1", roomMessage("ready", { ready: true }));
+  h.bridge.handleClientMessage("c_2", roomMessage("ready", { ready: true }));
+  const start = h.last("sd_round_start");
+  assertEqual(start.raceTypeId, "circuit", "every model with a directional atlas may race online");
+  // A stray `done` from a client must not adjudicate a circuit round off empty drag logs.
+  h.bridge.handleClientMessage("c_1", roomMessage("done", { round: start.round, attempt: start.attempt }));
+  h.bridge.handleClientMessage("c_2", roomMessage("done", { round: start.round, attempt: start.attempt }));
+  assertEqual(h.events("sd_round_result").length, 0, "a circuit round is over when the sim says so");
+  // Nobody drives: the round times out inside the sim and re-runs rather than hanging.
+  // 1.2s lead, 150ms sim delay, a 3s simulated tree, then the 300s timeout.
+  h.advance(1200 + 150 + 3000 + 300_500);
+  h.bridge.tickActiveRooms();
+  const result = h.last("sd_round_result");
+  assert(result, "a round nobody finished is still called");
+  assertEqual(result.decided, false);
+  assertEqual(result.outcome.kind, "round-restart");
 });
 
 console.log(`\n  ${passed} passed, ${failed} failed`);

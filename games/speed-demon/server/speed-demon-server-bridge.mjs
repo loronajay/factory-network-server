@@ -28,6 +28,7 @@
 // them. See the match engine for why that is the whole point.
 
 import {
+  CIRCUIT_SNAPSHOT_HZ,
   createSpeedDemonMatchEngine,
   configFromSeed,
   normalizeConfig,
@@ -41,6 +42,9 @@ export function createSpeedDemonServerBridge({
   createRoomCode = () => Math.random().toString(36).slice(2, 7).toUpperCase(),
   sendToClient,
   makeSeed = () => Math.floor(Math.random() * 2 ** 31),
+  // The circuit sim's clock. Tests pass `null` to drive rooms by hand through
+  // `tickActiveRooms` against a fake `now`, rather than racing a real timer.
+  scheduleInterval = (fn, ms) => setInterval(fn, ms),
 } = {}) {
   const store = createSpeedDemonRoomStore();
 
@@ -264,6 +268,69 @@ export function createSpeedDemonServerBridge({
     const start = room.engine.startRound();
     if (!start) return;
     emitToRoom(room, { event: "sd_round_start", roomCode: room.roomCode, seed: room.seed, ...start });
+    if (start.raceTypeId === "circuit") startCircuitTicking(room);
+  }
+
+  // -------------------------------------------------------------------------
+  // The circuit sim — a continuously ticking world, the hide-and-seek shape
+  // -------------------------------------------------------------------------
+  //
+  // A drag round needs the server only at the end, so the registry's 250ms
+  // heartbeat is plenty for it. A circuit round is *simulated* here, and four
+  // bursts a second is not a simulation anyone can drive against: the opponent
+  // teleported between snapshots and every input sat in its queue for up to a
+  // quarter-second. So a circuit room holds an interval of its own for the
+  // length of the round, and the heartbeat only covers a room whose timer is
+  // gone (a test harness, or a timer torn down by a throw).
+
+  const CIRCUIT_TICK_MS = Math.round(1000 / CIRCUIT_SNAPSHOT_HZ);
+
+  function stopCircuitTicking(room) {
+    if (room?.circuitTimer) clearInterval(room.circuitTimer);
+    if (room) room.circuitTimer = null;
+  }
+
+  function startCircuitTicking(room) {
+    stopCircuitTicking(room);
+    if (!scheduleInterval) return;
+    room.circuitTimer = scheduleInterval(() => {
+      // Anything escaping here would take down every match on the server, not
+      // just this room's.
+      try {
+        if (!advanceCircuitRoom(room)) stopCircuitTicking(room);
+      } catch (error) {
+        stopCircuitTicking(room);
+        console.error("[speed-demon] circuit tick:", error);
+      }
+    }, CIRCUIT_TICK_MS);
+    room.circuitTimer.unref?.();
+  }
+
+  /**
+   * One step of a circuit room: advance the sim to the clock, publish the
+   * snapshot, and publish the verdict the moment the sim finishes. Returns
+   * whether the round is still live — false stops the room's timer.
+   */
+  function advanceCircuitRoom(room) {
+    if (!store.getRoom(room.roomCode)) return false;
+    const live = room.engine.phase === "running" || room.engine.phase === "countdown";
+    if (!live || room.engine.config.raceTypeId !== "circuit") return false;
+    const advanced = room.engine.advanceCircuit();
+    if (!advanced) return true; // before startAt: keep the timer, nothing to say yet
+    const round = room.engine.describe().round;
+    emitToRoom(room, {
+      event: "sd_circuit_snapshot",
+      roomCode: room.roomCode,
+      round: round?.number ?? 0,
+      attempt: round?.attempt ?? 1,
+      serverNow: now(),
+      ...advanced.snapshot,
+    });
+    if (advanced.result) {
+      emitToRoom(room, { event: "sd_round_result", roomCode: room.roomCode, ...advanced.result });
+      return false;
+    }
+    return true;
   }
 
   function finishRound(room) {
@@ -293,19 +360,9 @@ export function createSpeedDemonServerBridge({
       // those are the two phases where a timeout means anything.
       const live = room.engine.phase === "running" || room.engine.phase === "countdown";
       if (live && room.engine.config.raceTypeId === "circuit") {
-        const advanced = room.engine.advanceCircuit();
-        if (!advanced) continue;
-        emitToRoom(room, {
-          event: "sd_circuit_snapshot",
-          roomCode: room.roomCode,
-          round: room.engine.describe().round?.number ?? 0,
-          attempt: room.engine.describe().round?.attempt ?? 1,
-          serverNow: now(),
-          ...advanced.snapshot,
-        });
-        if (advanced.result) {
-          emitToRoom(room, { event: "sd_round_result", roomCode: room.roomCode, ...advanced.result });
-        }
+        // The room's own timer owns a live circuit round; the heartbeat only
+        // steps in for a room that has none.
+        if (!room.circuitTimer) advanceCircuitRoom(room);
         continue;
       }
       if (live && room.engine.roundIsOver()) finishRound(room);
@@ -326,6 +383,7 @@ export function createSpeedDemonServerBridge({
     emit(clientId, { event: "room_left", roomCode: room.roomCode });
 
     if (room.memberClientIds.size === 0) {
+      stopCircuitTicking(room);
       store.deleteRoom(room.roomCode);
       return;
     }
@@ -338,6 +396,7 @@ export function createSpeedDemonServerBridge({
     });
     // A match in progress is conceded rather than left hanging.
     if (left?.conceded) {
+      stopCircuitTicking(room);
       emitToRoom(room, {
         event: "sd_match_forfeit",
         roomCode: room.roomCode,

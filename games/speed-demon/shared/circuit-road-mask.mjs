@@ -1,19 +1,26 @@
 import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
-import { CIRCUIT_TRACK_IDS } from "./circuit-tracks.mjs";
+import { createRoadMask } from "./circuit/road-mask.mjs";
+import { circuitTrackById } from "./circuit/tracks.mjs";
 
 // The shipped mask is an 8-bit, non-interlaced grayscale PNG. Decode it here
 // with built-ins so the authoritative server uses the exact same road pixels as
-// the cabinet without adding a server dependency.
+// the cabinet without adding a server dependency. Only the *decoding* lives
+// here: the footprint probe that turns pixels into "is this pose on the road"
+// is the cabinet's own `createRoadMask`, mirrored, so the two sides cannot
+// disagree about what touching a wall means.
 export function loadCircuitRoadMask(trackId = "old-town-shrine-loop") {
-  const known = new Set(CIRCUIT_TRACK_IDS);
-  if (!known.has(trackId)) throw new Error(`Unknown circuit road mask '${trackId}'`);
+  const track = circuitTrackById(trackId);
+  if (!track) throw new Error(`Unknown circuit road mask '${trackId}'`);
   const url = new URL(`../assets/${trackId}-road-mask.png`, import.meta.url);
   const png = readFileSync(url);
   if (png.readUInt32BE(12) !== 0x49484452) throw new Error("Invalid circuit road mask PNG");
   const width = png.readUInt32BE(16);
   const height = png.readUInt32BE(20);
   if (png[24] !== 8 || png[25] !== 0 || png[28] !== 0) throw new Error("Unsupported circuit road mask PNG");
+  if (width !== track.world.width || height !== track.world.height) {
+    throw new Error(`Circuit road mask '${trackId}' is ${width}x${height}; the world is ${track.world.width}x${track.world.height}`);
+  }
   const chunks = [];
   for (let offset = 8; offset < png.length;) {
     const length = png.readUInt32BE(offset);
@@ -42,23 +49,7 @@ export function loadCircuitRoadMask(trackId = "old-town-shrine-loop") {
     }
     prior = row;
   }
-  const containsPoint = (x, y) => {
-    const px = Math.round(x);
-    const py = Math.round(y);
-    return px >= 0 && px < width && py >= 0 && py < height && pixels[py * width + px] > 127;
-  };
-  return {
-    width, height, pixels,
-    containsVehicle(vehicle) {
-      const forward = { x: Math.sin(vehicle.angle), y: -Math.cos(vehicle.angle) };
-      const right = { x: Math.cos(vehicle.angle), y: Math.sin(vehicle.angle) };
-      for (const along of [0, 16, -16]) for (const across of [0, 9, -9]) {
-        if (!containsPoint(vehicle.x + forward.x * along + right.x * across,
-          vehicle.y + forward.y * along + right.y * across)) return false;
-      }
-      return true;
-    },
-  };
+  return createRoadMask({ width, height, pixels });
 }
 
 function paeth(left, up, upperLeft) {

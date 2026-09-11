@@ -50,7 +50,9 @@ import {
   createAuthoritativeCircuitRound,
   ticksForElapsedMs,
 } from "./speed-demon-circuit-engine.mjs";
-import { CIRCUIT_TRACK_IDS, DEFAULT_CIRCUIT_TRACK_ID } from "../shared/circuit-tracks.mjs";
+import { CIRCUIT_TRACKS, DEFAULT_CIRCUIT_TRACK_ID } from "../shared/circuit/tracks.mjs";
+
+const CIRCUIT_TRACK_IDS = CIRCUIT_TRACKS.map((track) => track.id);
 
 export const PHASE_LOBBY = "lobby";
 export const PHASE_COUNTDOWN = "countdown";
@@ -97,6 +99,30 @@ export const ROUND_TIMEOUT_MS = 90000;
  * so the bound is one-sided.
  */
 export const INPUT_LEAD_TICKS = 90; // 1.5s of slack for jitter and batching
+
+/**
+ * How far behind real time the authoritative circuit sim runs.
+ *
+ * A circuit client predicts its own car at real time and streams tick-stamped
+ * inputs. For the server's copy of tick T to see the input the driver made at
+ * tick T, that packet has to arrive before the server simulates T — so the
+ * server deliberately trails the clock by one network round trip's worth. Run
+ * it at real time and every input is late by the latency, every steer change
+ * lands on the server a beat after the client predicted it, and the snapshot
+ * that comes back disagrees with the prediction on every corner: that was the
+ * rubber-banding. The cost is that a snapshot describes a state this long plus
+ * the latency ago, which the client covers by replaying its unacknowledged
+ * inputs — exact, because the sim is deterministic.
+ */
+export const CIRCUIT_INPUT_DELAY_MS = 150;
+
+/**
+ * How often a circuit room advances its sim and publishes a snapshot. The
+ * generic bridge heartbeat is 250ms, which was the cadence before: four
+ * snapshots a second, each a quarter-second burst of physics, and the opponent
+ * teleporting between them.
+ */
+export const CIRCUIT_SNAPSHOT_HZ = 20;
 
 export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {} } = {}) {
   const state = {
@@ -229,6 +255,10 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
           players: state.players,
           laps: state.config.laps,
           trackId: state.config.trackId,
+          // The tree lives inside the sim for a circuit: tick 0 is at startAt
+          // on both sides and the countdown is simulated, so 3-2-1-GO lands on
+          // the same tick everywhere without a second clock to reconcile.
+          countdownSeconds: COUNTDOWN_SECONDS,
         })
         : null,
     };
@@ -284,9 +314,15 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
     return { player, ...state.round.circuit.receive(player.playerId, events) };
   }
 
+  /**
+   * Steps the authoritative circuit sim up to where the clock says it should be
+   * — trailing real time by CIRCUIT_INPUT_DELAY_MS, see there — and hands back
+   * the snapshot to publish, plus the round's verdict the moment it is over.
+   */
   function advanceCircuit() {
-    if (!state.round?.circuit || state.phase === PHASE_MATCH_OVER) return null;
-    const elapsedMs = now() - state.round.startAt;
+    if (!state.round?.circuit) return null;
+    if (state.phase !== PHASE_COUNTDOWN && state.phase !== PHASE_RUNNING) return null;
+    const elapsedMs = now() - state.round.startAt - CIRCUIT_INPUT_DELAY_MS;
     if (elapsedMs < 0) return null;
     markRunning();
     const snapshot = state.round.circuit.advance(ticksForElapsedMs(elapsedMs));
@@ -294,21 +330,24 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
   }
 
   function adjudicateCircuit() {
-    if (!state.round?.circuit || !state.match || state.phase === PHASE_MATCH_OVER) return null;
+    if (!state.round?.circuit || !state.match) return null;
+    // Once per round, for the same reason `adjudicate` latches: the sweep that
+    // finished the race and a late `done` must not both award it.
+    if (state.phase !== PHASE_COUNTDOWN && state.phase !== PHASE_RUNNING) return null;
     const results = state.round.circuit.results;
     state.match = recordFinish(state.match, results);
-    state.phase = PHASE_MATCH_OVER;
-    const winner = results.find((entry) => entry.playerId === state.match.winnerId);
+    const decided = isDecided(state.match);
+    state.phase = decided ? PHASE_MATCH_OVER : PHASE_ROUND_OVER;
     return {
       round: state.round.number,
       attempt: state.round.attempt,
       outcome: state.match.lastEvent,
       redLight: false,
       offenders: [],
-      runs: results.map((run) => ({ ...run, finishTime: run.finishTime })),
+      runs: results.map((run) => ({ ...run })),
       score: matchScore(state.match),
-      decided: true,
-      winnerId: state.match.winnerId ?? winner?.playerId ?? null,
+      decided,
+      winnerId: state.match.winnerId,
       loserId: state.match.loserId,
       history: state.match.history,
     };
@@ -344,6 +383,8 @@ export function createSpeedDemonMatchEngine({ now = () => Date.now(), config = {
    */
   function adjudicate() {
     if (!state.round || !state.match) return null;
+    // A circuit round is decided by its own sim, never by replaying drag logs.
+    if (state.round.circuit) return adjudicateCircuit();
     // **Once per round, ever.** A client reports `done` when its run ends, and a
     // client that keeps saying so — a loop that re-sends every tick, or one
     // doing it on purpose — would otherwise decide the round again on each
