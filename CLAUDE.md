@@ -103,7 +103,16 @@ and the fixture it operates is picked server-side by distance, height and facing
 client. `endRoundByDemon` remains the round's single ending and is also how a dropped seeker settles
 it. Reconnection is live: a disconnected guest's body is left standing and catchable for the 30s
 grace window, and `broadcastAfterReconnect` hands a resumed client the world as it is now rather than
-the lobby it left.
+the lobby it left. **A lobby can seat CPU guests**: `cpuCount` is a host-only lobby setting
+(`sanitizeLobbySettings` bounds it 0-6; `HOST_ONLY_SETTINGS` keeps it out of the matchmaking
+comparison so a searcher who never asked for bots still joins), and at start `hideAndSeekCpuSeats`
+fills only the chairs still empty — people always come first. Each bot is an ordinary body in the
+tick with the mirrored `cpu-logic.js` at its keyboard: `advanceHideAndSeekMatch` asks it for inputs
+every tick and hands them to the same `engine.tick` a client's inputs reach, so a bot has no other
+channel into the state and the authority cannot favour it. `cpu-N` ids are reserved and refused on
+`hide_and_seek_input`; the seeker is chosen among the humans only. The snapshot marks a bot with
+`cpu: true`. This is the shape for any lobby game here that wants bots: a pure driver in the mirror
+that emits the game's own input, never a second path into the match.
 
 **One trap this game surfaced applies to every lobby game here:** `find_lobby` matches an open lobby
 on its seat limits, and a search that omits `minPlayers`/`maxPlayers` is sanitized to the server-wide

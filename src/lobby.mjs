@@ -401,7 +401,7 @@ export function joinLobby(clientId, roomCode, identity = null, expectedGameId = 
 // Settings that ride along on the lobby but say nothing about which room a
 // player belongs in. The host's value wins once the room is created; a searcher
 // is never turned away for having typed something different.
-const HOST_ONLY_SETTINGS = new Set(["word"]);
+const HOST_ONLY_SETTINGS = new Set(["word", "cpuCount"]);
 
 function sameLobbySettings(a = {}, b = {}) {
   const left = sanitizeLobbySettings(a);

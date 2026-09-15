@@ -3,8 +3,10 @@ import test from "node:test";
 
 import { hideAndSeekLobbyGame } from "./server/hide-and-seek-lobby-game.mjs";
 import { doesLobbyMatchSearch } from '../../src/lobby.mjs';
+import { sanitizeLobbySettings } from '../../src/util.mjs';
 import {
   HIDE_AND_SEEK_TICK_RATE,
+  hideAndSeekCpuSeats,
   advanceHideAndSeekMatch,
   applyHideAndSeekDisconnect,
   applyHideAndSeekInput,
@@ -368,4 +370,74 @@ test("the demons in an authoritative round are the map's roster, not a hard-code
       assert.ok(Math.hypot(a.x - b.x, a.z - b.z) > 12 || Math.abs(a.y - b.y) > 1, "two demons opened together");
     }
   }
+});
+
+// --- CPU guests -----------------------------------------------------------------------------------
+//
+// A host can fill the empty chairs with bots. They are ordinary bodies in the tick with the
+// cabinet's own `cpu-logic.js` pressing the keys, so everything below is about seating and the wire;
+// how a bot hides is the cabinet's `tests/cpu-logic.test.js`.
+
+function botLobby(cpuCount, humans = MEMBERS, maxPlayers = 8) {
+  return { ...lobby(), members: new Set(humans), maxPlayers, settings: sanitizeLobbySettings({ cpuCount }) };
+}
+
+test("cpuCount is a bounded, host-only lobby setting that never splits matchmaking", () => {
+  assert.equal(sanitizeLobbySettings({}).cpuCount, 0);
+  assert.equal(sanitizeLobbySettings({ cpuCount: "3" }).cpuCount, 3);
+  assert.equal(sanitizeLobbySettings({ cpuCount: 40 }).cpuCount, 6);
+  assert.equal(sanitizeLobbySettings({ cpuCount: -1 }).cpuCount, 0);
+  const open = { ...botLobby(4), status: "open", minPlayers: 2, maxPlayers: 8, settings: sanitizeLobbySettings({ mapId: "grand-hotel", cpuCount: 4 }) };
+  assert.equal(doesLobbyMatchSearch(open, "hide-and-seek", null, { mapId: "grand-hotel" }), true, "a searcher who asked for no bots still joins a host who did");
+  assert.equal(doesLobbyMatchSearch(open, "hide-and-seek", null, { mapId: "cinder-mall" }), false);
+});
+
+test("CPU guests fill only the chairs nobody claimed, and people always come first", () => {
+  assert.deepEqual(hideAndSeekCpuSeats(botLobby(3)), ["cpu-1", "cpu-2", "cpu-3"]);
+  assert.deepEqual(hideAndSeekCpuSeats(botLobby(6, Array.from({ length: 6 }, (_, i) => `g${i}`))), ["cpu-1", "cpu-2"]);
+  assert.deepEqual(hideAndSeekCpuSeats(botLobby(6, Array.from({ length: 8 }, (_, i) => `g${i}`))), []);
+  assert.deepEqual(hideAndSeekCpuSeats(botLobby(0)), []);
+  assert.deepEqual(hideAndSeekCpuSeats({ ...botLobby(6), maxPlayers: 4 }), ["cpu-1"]);
+});
+
+test("a match seats the bots as named hiders and the seeker is always a person", () => {
+  for (const seed of ["A", "B", "C", "D", "E", "F", "G", "H"]) {
+    const match = createHideAndSeekMatchState({ ...botLobby(3), seed }, 1_000);
+    const view = serializeHideAndSeekMatch(match, 1_000);
+    assert.equal(view.players.length, 6);
+    assert.ok(MEMBERS.includes(match.seekerId), `seed ${seed} made a bot the seeker`);
+    const bots = view.players.filter((player) => player.cpu);
+    assert.deepEqual(bots.map((player) => player.id), ["cpu-1", "cpu-2", "cpu-3"]);
+    assert.deepEqual(bots.map((player) => player.name), ["CPU Guest 1", "CPU Guest 2", "CPU Guest 3"]);
+    assert.ok(bots.every((player) => player.role === "hider" && player.connected && player.accountPlayerId === ""));
+    assert.ok(view.players.filter((player) => !player.cpu).every((player) => ["Ana", "Bo", "Cy"].includes(player.name)));
+  }
+});
+
+test("bots walk to cover on their own, and nobody can drive one from a socket", () => {
+  const match = createHideAndSeekMatchState(botLobby(2), 0);
+  const before = serializeHideAndSeekMatch(match).players.filter((player) => player.cpu);
+  assert.equal(applyHideAndSeekInput(match, "cpu-1", walk()), false, "a client claiming a bot's seat is refused");
+  run(match, 20);
+  const after = serializeHideAndSeekMatch(match).players.filter((player) => player.cpu);
+  for (const [index, bot] of after.entries()) {
+    assert.ok(Math.hypot(bot.x - before[index].x, bot.z - before[index].z) > 1, `${bot.id} never left its seat`);
+    assert.equal(match.space.blocked(bot.x, bot.z, bot.y), false, `${bot.id} is inside geometry`);
+  }
+  // A bot's body is catchable state like anybody else's: the tick, not this file, decides that.
+  assert.equal(after.every((bot) => bot.alive), true);
+});
+
+test("a round with CPU guests still replays deterministically from its seed", () => {
+  const a = createHideAndSeekMatchState(botLobby(4), 0);
+  const b = createHideAndSeekMatchState(botLobby(4), 0);
+  run(a, 30); run(b, 30);
+  assert.deepEqual(serializeHideAndSeekMatch(a, 30_000), serializeHideAndSeekMatch(b, 30_000));
+});
+
+test("a match without bots carries no driver and looks exactly as it did", () => {
+  const match = createHideAndSeekMatchState(lobby(), 0);
+  assert.equal(match.cpuDriver, null);
+  assert.deepEqual(match.cpuIds, []);
+  assert.ok(serializeHideAndSeekMatch(match).players.every((player) => player.cpu === false));
 });

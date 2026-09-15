@@ -86,6 +86,11 @@ export function sanitizeLobbySettings(settings = {}) {
     // is what made every online HORSE match spell HORSE whatever was typed.
     // Games that never send it stay "" on both sides and are unaffected.
     word: typeof settings.word === "string" ? settings.word.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 10) : "",
+    // How many CPU seats the host wants filled when the match starts, for games that can seat
+    // bots. Host-only (see HOST_ONLY_SETTINGS in lobby.mjs): a searcher is never turned away for
+    // not having asked for bots, and the game engine clamps it to the chairs actually left empty
+    // when it seats the round. Games that never send it stay 0 on both sides and are unaffected.
+    cpuCount: clampInt(settings.cpuCount, 0, 6, 0),
   };
 }
 

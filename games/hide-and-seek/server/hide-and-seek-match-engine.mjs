@@ -8,10 +8,15 @@
 // The demons hunt here too. Their navigation, their line of sight and the catch they resolve all
 // live in the mirrored `demon-logic.js`, and the doors they walk through in `fixtures-logic.js`, so
 // the hotel a client draws and the hotel this server adjudicates are the same building.
+//
+// So do the CPU guests. A lobby's host can ask for bots to fill the empty chairs, and each one is an
+// ordinary body in the tick with `cpu-logic.js` at its keyboard: it sends the same inputs a human
+// sends and nothing else, so the authority cannot favour it even by accident. The seeker is always a
+// real person — a bot only ever hides.
 import {
   CONFIG, FLOOR_DEFS, FLASHLIGHT_CONFIG, ROUND_CONFIG, HEAT_CONFIG, STAMINA_CONFIG,
   floorY, keyIdForFloor, keyLabelForFloor,
-  collision, demon, enemy, fixtures, layout, maps, movement, plan, round, heat, sim, stamina, flashlight,
+  collision, cpu, demon, enemy, fixtures, hiders, layout, maps, movement, plan, round, heat, sim, stamina, flashlight,
 } from "../shared/index.mjs";
 
 export const HIDE_AND_SEEK_GAME_ID = "hide-and-seek";
@@ -26,6 +31,8 @@ const MAX_TICKS_PER_ADVANCE = 12;
 const STEP_SECONDS = 1 / HIDE_AND_SEEK_TICK_RATE;
 
 export const HIDE_AND_SEEK_LOBBY_LIMITS = Object.freeze({ minPlayers: 2, maxPlayers: 8 });
+// The most bots a host may ask for. The engine clamps it again to the chairs actually left empty.
+export const HIDE_AND_SEEK_MAX_CPU = 6;
 
 // A map's building is identical in every match and its plan is immutable, so each one is built once
 // and shared. Door state is not in here — that lives per match, in the space.
@@ -110,6 +117,7 @@ function seatPlayers(hotel, memberIds, seekerId, seed) {
 }
 
 function profileFor(lobby, clientId, index) {
+  if (cpu.isCpuId(clientId)) return { accountPlayerId: "", name: cpu.cpuName(clientId) };
   const profile = lobby?.memberProfiles?.get(clientId) || {};
   return {
     accountPlayerId: clean(profile.playerId, 64),
@@ -117,12 +125,24 @@ function profileFor(lobby, clientId, index) {
   };
 }
 
+// The bot seats a lobby fills at start. Humans always come first: a CPU only sits in a chair nobody
+// claimed, so a host asking for six bots in a lobby that then fills with people gets none.
+export function hideAndSeekCpuSeats(lobby) {
+  const requested = Math.min(HIDE_AND_SEEK_MAX_CPU, Math.max(0, Math.floor(Number(lobby?.settings?.cpuCount) || 0)));
+  const maxPlayers = Number(lobby?.maxPlayers) || HIDE_AND_SEEK_LOBBY_LIMITS.maxPlayers;
+  return cpu.cpuSeatIds(requested, lobby?.members?.size || 0, maxPlayers);
+}
+
 export function createHideAndSeekMatchState(lobby, startAt) {
   const mapId = hideAndSeekMapId(lobby);
   const hotel = hotelPlan(mapId);
-  const memberIds = [...(lobby?.members || [])];
+  const humanIds = [...(lobby?.members || [])];
+  const cpuIds = hideAndSeekCpuSeats(lobby);
+  const memberIds = [...humanIds, ...cpuIds];
   const seed = clean(lobby?.seed, 32, "seed");
-  const seekerId = chooseSeeker(memberIds, seed);
+  // Who is it is decided among the people. A bot at the keyboard of the seeker would make the round
+  // a solo game the humans happen to be standing in.
+  const seekerId = chooseSeeker(humanIds, seed);
   const space = sim.createPlanSpace({ plan, collision, hotel, config: CONFIG });
   const engine = sim.createSimulation({
     movement, round, stamina, flashlight, heat, fixtures, demon, enemy, layout,
@@ -141,6 +161,12 @@ export function createHideAndSeekMatchState(lobby, startAt) {
     },
   });
   const seats = seatPlayers(hotel, memberIds, seekerId, seed);
+  // The bots' hands, off the same seeded random as the round, so a match with CPU guests in it still
+  // replays from its inputs.
+  const cpuDriver = cpuIds.length ? cpu.createDriverContext({
+    hotel, space, catalog: engine.catalog, enemy, hiderLogic: hiders, demonLogic: demon, roundLogic: round,
+    config: CONFIG, random: seededRandom(`${seed}:cpu`),
+  }) : null;
   return {
     gameId: HIDE_AND_SEEK_GAME_ID,
     protocolVersion: HIDE_AND_SEEK_PROTOCOL_VERSION,
@@ -158,7 +184,11 @@ export function createHideAndSeekMatchState(lobby, startAt) {
     // The latest input from each client. A tick reads it; it is never a queue, because a client that
     // stops sending should keep walking into the wall it was already walking into, not bank moves.
     inputs: new Map(),
+    cpuIds,
+    cpuDriver,
+    cpuBrains: cpuIds.map((id) => cpu.createHiderBrain(id)),
     profiles: new Map(memberIds.map((id, index) => [id, profileFor(lobby, id, index)])),
+    // A bot never drops, so it is "connected" for the life of the match.
     connected: new Set(memberIds),
     lastAdvanceAt: Number(startAt) || Date.now(),
     snapshotTick: -1,
@@ -168,7 +198,8 @@ export function createHideAndSeekMatchState(lobby, startAt) {
 // The only thing a client is allowed to say. `sim-logic.readInput` does the narrowing; anything else
 // on the message — a position, a charge, a claim about a tag — never reaches the state.
 export function applyHideAndSeekInput(match, clientId, value) {
-  if (!match || !match.state.bodies.some((body) => body.id === clientId)) return false;
+  if (!match || cpu.isCpuId(clientId)) return false;
+  if (!match.state.bodies.some((body) => body.id === clientId)) return false;
   match.inputs.set(clientId, sim.readInput(value));
   return true;
 }
@@ -194,7 +225,16 @@ export function advanceHideAndSeekMatch(match, now = Date.now()) {
   if (owed > ticks) match.lastAdvanceAt = now;
   else match.lastAdvanceAt += ticks * STEP_SECONDS * 1000;
   const inputs = currentInputs(match);
-  for (let tick = 0; tick < ticks; tick += 1) match.state = match.engine.tick(match.state, STEP_SECONDS, inputs);
+  for (let tick = 0; tick < ticks; tick += 1) {
+    // The bots read the world as it stands and press their keys for this tick, exactly where a
+    // client's input would arrive. Their decisions never touch the state directly.
+    if (match.cpuDriver) {
+      const driven = cpu.driveHiders(match.cpuBrains, match.state, match.cpuDriver, STEP_SECONDS);
+      match.cpuBrains = driven.brains;
+      Object.assign(inputs, driven.inputs);
+    }
+    match.state = match.engine.tick(match.state, STEP_SECONDS, inputs);
+  }
   if (match.engine.snapshot(match.state).round.over) match.phase = "complete";
   return match;
 }
@@ -257,6 +297,7 @@ export function serializeHideAndSeekMatch(match, serverNow = Date.now()) {
       name: match.profiles.get(player.id)?.name || "Guest",
       accountPlayerId: match.profiles.get(player.id)?.accountPlayerId || "",
       connected: match.connected.has(player.id),
+      cpu: cpu.isCpuId(player.id),
     })),
   };
 }

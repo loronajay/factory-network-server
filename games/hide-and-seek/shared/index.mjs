@@ -30,6 +30,9 @@ import "./enemy-logic.js";
 import "./fixtures-logic.js";
 import "./demon-logic.js";
 import "./sim-logic.js";
+// The CPU guests: the solo stand-ins' brain, and the hands that press keys for it on the server.
+import "./hider-logic.js";
+import "./cpu-logic.js";
 
 export {
   CONFIG,
@@ -59,7 +62,9 @@ export const enemy = globalThis.HotelEnemyLogic;
 export const fixtures = globalThis.HotelFixtures;
 export const demon = globalThis.HotelDemon;
 export const sim = globalThis.HotelSim;
+export const hiders = globalThis.HotelHiders;
+export const cpu = globalThis.HotelCpu;
 
-for (const [name, api] of Object.entries({ maps, layout, plan, mallPlan, hospitalPlan, cinemaPlan, collision, movement, round, stamina, heat, flashlight, enemy, fixtures, demon, sim })) {
+for (const [name, api] of Object.entries({ maps, layout, plan, mallPlan, hospitalPlan, cinemaPlan, collision, movement, round, stamina, heat, flashlight, enemy, fixtures, demon, sim, hiders, cpu })) {
   if (!api) throw new Error(`Hide and Seek shared module "${name}" failed to load`);
 }
