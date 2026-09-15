@@ -109,6 +109,11 @@ the lobby it left.
 on its seat limits, and a search that omits `minPlayers`/`maxPlayers` is sanitized to the server-wide
 default of **2-6**. Any game whose `lobbyLimits` differ from that must have its client *send* them,
 or every guest silently opens a room of their own and nobody can see anybody.
+**Its sibling:** `lobby.settings` is whatever `sanitizeLobbySettings` (`src/util.mjs`) returns, not
+what the client sent. A field a game engine reads off `lobby.settings` that is not listed there is
+dropped at the boundary — `yam-bowling`'s `bowlingStyle` was, so every online 3D pick silently
+froze into a 2D match and 2D/3D searches were paired together. A new per-game setting must be added
+to that sanitizer as a bounded primitive, which is also what puts it into the matchmaking comparison.
 `shark-hall` is the **turn-based** server-authoritative shape, and the cheapest one here to
 copy. A client sends a stroke — `{ angle, power, spinX, spinY }`, plus a cue-ball placement when it
 holds ball in hand — and this server runs the cabinet's own pure physics over the table it is

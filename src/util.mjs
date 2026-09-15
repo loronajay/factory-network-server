@@ -73,6 +73,19 @@ export function sanitizeLobbySettings(settings = {}) {
     // disagree about how long the match is must never be paired. Games that
     // never send it stay at 1 on both sides and are unaffected.
     raceTo: clampInt(settings.raceTo, 1, 9, 1),
+    // Which physics a bowling match is played under. It lives here for the same
+    // reason `ranked` and `mapId` do: matchmaking compares settings, and a 2D
+    // client must never be paired into a room the server will score with a 3D
+    // physics job. A game engine freezes this into its match at creation, so
+    // dropping it at this boundary silently started every 3D pick as 2D.
+    // Games that never send it stay "arcade" on both sides and are unaffected.
+    bowlingStyle: settings.bowlingStyle === "3d" ? "3d" : "arcade",
+    // The word a HORSE match spells. Bounded the way the cabinet's own
+    // normalizeWord bounds it (letters only, at most ten) so the engine receives
+    // the host's actual word instead of falling back to HORSE — dropping it here
+    // is what made every online HORSE match spell HORSE whatever was typed.
+    // Games that never send it stay "" on both sides and are unaffected.
+    word: typeof settings.word === "string" ? settings.word.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 10) : "",
   };
 }
 

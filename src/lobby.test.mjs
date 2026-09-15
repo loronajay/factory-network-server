@@ -10,6 +10,7 @@ import { createEchoDuelMatchState } from "../games/echo-duel/server/echo-duel-ma
 import { createPotOfGreedMatchState } from "../games/pot-of-greed/server/pot-of-greed-match-engine.mjs";
 import { lobbies, clientLobbies, clientDisplayLobbies, clientSessionTokens, suspendedLobbySessions } from "./state.mjs";
 import { createLobby, suspendLobbyClient, resumeLobbyClient } from "./lobby.mjs";
+import { sanitizeLobbySettings } from "./util.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -248,6 +249,56 @@ test("a ranked search never joins a casual queue, and a game that omits stakes i
   // matchmaking behaves exactly as it did before the split existed.
   const legacy = { ...casualLobby, gameId: "bird-duty", settings: { matchType: "duel" } };
   assertEq(doesLobbyMatchSearch(legacy, "bird-duty", limits, { matchType: "duel" }), true);
+});
+
+test("a 3D bowling search never joins a 2D room and the style survives the settings boundary", () => {
+  const limits = { minPlayers: 2, maxPlayers: 2 };
+  const arcadeLobby = {
+    gameId: "yam-bowling",
+    status: "open",
+    isPrivate: false,
+    minPlayers: 2,
+    maxPlayers: 2,
+    settings: sanitizeLobbySettings({ matchType: "quick", ranked: false }),
+    members: new Set(["c_host"]),
+  };
+  const threeDLobby = { ...arcadeLobby, settings: sanitizeLobbySettings({ matchType: "quick", ranked: false, bowlingStyle: "3d" }) };
+
+  // The engine freezes `lobby.settings.bowlingStyle` into the match, so the
+  // sanitized room must still say "3d" — dropping it here is what silently
+  // started every online 3D pick as a 2D match.
+  assertEq(threeDLobby.settings.bowlingStyle, "3d");
+  assertEq(arcadeLobby.settings.bowlingStyle, "arcade");
+  assertEq(sanitizeLobbySettings({ bowlingStyle: "hologram" }).bowlingStyle, "arcade");
+
+  assertEq(doesLobbyMatchSearch(arcadeLobby, "yam-bowling", limits, { matchType: "quick", ranked: false }), true);
+  assertEq(doesLobbyMatchSearch(arcadeLobby, "yam-bowling", limits, { matchType: "quick", ranked: false, bowlingStyle: "3d" }), false);
+  assertEq(doesLobbyMatchSearch(threeDLobby, "yam-bowling", limits, { matchType: "quick", ranked: false }), false);
+  assertEq(doesLobbyMatchSearch(threeDLobby, "yam-bowling", limits, { matchType: "quick", ranked: false, bowlingStyle: "3d" }), true);
+});
+
+test("a HORSE word survives the settings boundary and the host's word is the one played", () => {
+  const limits = { minPlayers: 2, maxPlayers: 2 };
+  const pigLobby = {
+    gameId: "mini-hoops-horse",
+    status: "open",
+    isPrivate: false,
+    minPlayers: 2,
+    maxPlayers: 2,
+    settings: sanitizeLobbySettings({ word: "pig", protocolVersion: 1 }),
+    members: new Set(["c_host"]),
+  };
+
+  // The engine freezes `lobby.settings.word` into the match, so the sanitized
+  // room must still say PIG — dropping it here spelled HORSE in every match.
+  assertEq(pigLobby.settings.word, "PIG");
+  assertEq(sanitizeLobbySettings({ word: "d-o n k e y 12 tail" }).word, "DONKEYTAIL");
+  assertEq(sanitizeLobbySettings({}).word, "");
+
+  assertEq(doesLobbyMatchSearch(pigLobby, "mini-hoops-horse", limits, { word: "PIG", protocolVersion: 1 }), true);
+  // The word is the host's call — a searcher who typed something else still
+  // joins this room and plays for PIG.
+  assertEq(doesLobbyMatchSearch(pigLobby, "mini-hoops-horse", limits, { word: "HORSE", protocolVersion: 1 }), true);
 });
 
 test("buildLobbyStartedPayload includes authoritative Echo Duel snapshot metadata", () => {
