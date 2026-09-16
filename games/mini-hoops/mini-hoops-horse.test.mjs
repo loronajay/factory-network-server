@@ -242,6 +242,21 @@ test("a disconnect pauses the match, and a second one forfeits it", () => {
   assert.equal(serializeHorseMatch(forfeited).result.reason, "forfeit");
 });
 
+test("a seat that has actually left the lobby forfeits the match at once rather than pausing it", () => {
+  const dropped = lobby();
+  dropped.horseMatch = createHorseMatchState(dropped, 2_000);
+  assert.equal(horseLobbyGame.applyDisconnect(dropped, "socket-b"), true);
+  assert.equal(dropped.horseMatch.phase, "paused", "a suspended member only pauses the court");
+
+  const left = lobby();
+  left.horseMatch = createHorseMatchState(left, 2_000);
+  left.members.delete("socket-b");
+  assert.equal(horseLobbyGame.applyDisconnect(left, "socket-b"), true);
+  assert.equal(left.horseMatch.phase, "complete");
+  assert.equal(left.horseMatch.match.winner, 0);
+  assert.equal(left.status, "ended");
+});
+
 test("the serialized snapshot carries the bin both clients have to draw", () => {
   let state = createHorseMatchState(lobby(), 2_000);
   state = applyHorsePlacement(state, "socket-a", { ...STILL_BIN, motionId: "sideways" });

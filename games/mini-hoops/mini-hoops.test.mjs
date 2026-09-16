@@ -86,6 +86,26 @@ test("a disconnect pauses input until reconnect or forfeit expiry", async () => 
   assert.deepEqual(forfeited.winnerIds, ["socket-a"]);
 });
 
+test("a socket drop pauses the duel, but a seat that has actually left forfeits it at once", () => {
+  const dropped = lobby();
+  dropped.miniHoopsMatch = createMiniHoopsMatchState(dropped, 2_000);
+  // Suspended for the grace window: still a member, so the duel only pauses.
+  assert.equal(miniHoopsLobbyGame.applyDisconnect(dropped, "socket-b", 3_000), true);
+  assert.equal(dropped.miniHoopsMatch.phase, "paused");
+  assert.notEqual(dropped.status, "ended");
+
+  const left = lobby();
+  left.miniHoopsMatch = createMiniHoopsMatchState(left, 2_000);
+  // The generic leave removes the member before asking the game: an explicit
+  // leave_lobby or an expired grace window, never a drop that may come back.
+  left.members.delete("socket-b");
+  assert.equal(miniHoopsLobbyGame.applyDisconnect(left, "socket-b", 3_000), true);
+  assert.equal(left.miniHoopsMatch.phase, "complete");
+  assert.equal(left.miniHoopsMatch.endedReason, "forfeit");
+  assert.deepEqual(left.miniHoopsMatch.winnerIds, ["socket-a"]);
+  assert.equal(left.status, "ended");
+});
+
 test("the lobby adapter accepts pulls and refuses client-authored results", () => {
   const room = lobby();
   room.settings.modeId = "still";

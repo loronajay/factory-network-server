@@ -64,7 +64,14 @@ export const miniHoopsLobbyGame = {
   },
   hasActiveMatch(lobby) { return Boolean(lobby?.miniHoopsMatch); },
   applyDisconnect(lobby, clientId, now) {
-    const next = applyMiniHoopsDisconnect(lobby.miniHoopsMatch, clientId, now);
+    let next = applyMiniHoopsDisconnect(lobby.miniHoopsMatch, clientId, now);
+    // A suspended socket stays in lobby.members for the grace window. If the
+    // generic leave has already removed it, this is a real departure rather than
+    // a drop, and the duel settles now instead of holding the other player at a
+    // paused court, their shots refused, until the clock runs out.
+    if (!lobby.members?.has(clientId) && next?.phase === "paused") {
+      next = applyMiniHoopsDisconnect(next, clientId, now);
+    }
     if (next === lobby.miniHoopsMatch) return false;
     lobby.miniHoopsMatch = next;
     if (next.phase === "complete") lobby.status = "ended";

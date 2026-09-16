@@ -72,7 +72,13 @@ export const horseLobbyGame = {
   },
   hasActiveMatch(lobby) { return Boolean(lobby?.horseMatch); },
   applyDisconnect(lobby, clientId) {
-    const next = applyHorseDisconnect(lobby.horseMatch, clientId);
+    let next = applyHorseDisconnect(lobby.horseMatch, clientId);
+    // A suspended socket stays in lobby.members for the grace window. If the
+    // generic leave has already removed it, this is a real departure rather than
+    // a drop, and the match settles now instead of pausing the court forever.
+    if (!lobby.members?.has(clientId) && next?.phase === "paused") {
+      next = applyHorseDisconnect(next, clientId);
+    }
     if (next === lobby.horseMatch) return false;
     lobby.horseMatch = next;
     if (next.phase === "complete") lobby.status = "ended";

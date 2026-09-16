@@ -72,7 +72,9 @@ relay-only games (lovers-lost, battleshits, …) work with zero server code.
 
 A game's *folder* holds whatever its definition needs: lobby-based games
 (`echo-duel`, `build-buddy`) have a pure `*-match-engine.mjs` + a `*-lobby-game.mjs`
-adapter; the self-owning `circuit-siege` and `speed-demon` have bridges;
+adapter (`build-buddy` owns roles and stage results but not the world: the
+Runner's client publishes a `state_sync` the adapter relays only from the chair
+currently running — `buildBuddyWorldSyncRoute` — and clients converge on it); the self-owning `circuit-siege` and `speed-demon` have bridges;
 `sumorai` has only a seeded stage-plan; `creature-battler` / `cockpit-swarm` are just a strategy
 descriptor. `speed-demon` is the **server-authoritative** one: its bridge owns the queue,
 the room codes, the christmas tree and the match, and it decides every round by

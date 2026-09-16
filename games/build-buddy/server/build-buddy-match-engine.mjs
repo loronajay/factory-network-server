@@ -146,7 +146,7 @@ export function applyBuildBuddyInputToMatch(match, clientId, message = {}, now =
 
   if (messageType === "builder_command") {
     if (clientId !== next.roles.builderPlayerId) return rejectBuildBuddyInput(match, clientId, "wrong_builder_role", messageType);
-    const action = parsed.action === "delete" ? "delete" : "place";
+    const action = parsed.action === "delete" || parsed.action === "recall" ? parsed.action : "place";
     const toolType = action === "place" && BUILD_BUDDY_TOOLS.has(parsed.toolType) ? parsed.toolType : null;
     if (action === "place" && !toolType) return rejectBuildBuddyInput(match, clientId, "unknown_tool", messageType);
     next.commandSeq = Number(next.commandSeq || 0) + 1;
@@ -168,6 +168,31 @@ export function applyBuildBuddyInputToMatch(match, clientId, message = {}, now =
   }
 
   return rejectBuildBuddyInput(match, clientId, "unsupported_message", messageType);
+}
+
+// World sync routing. The server owns roles and stage results, but the world
+// itself — where the Runner is, which tools exist, how much timer is left — is
+// resolved on the Runner's client (the chair that physically touches it) and
+// mirrored to the Builder. That mirror is a `state_sync` the Runner publishes
+// every few ticks; only the Runner's chair may publish it, and only while the
+// stage is live. `builder_cursor` is the Builder's ghost preview and flows the
+// other way. Returns "relay" (forward to the rest of the room), "drop" (ignore
+// silently — a sync from the other chair is normal for a few ticks after a role
+// swap, and a dead match has nobody to tell) or "reject" (answer with an
+// authority error, because a client tried to publish something only the server
+// decides).
+const RUNNER_WORLD_MESSAGES = new Set(["state_sync", "runner_state"]);
+const BUILDER_WORLD_MESSAGES = new Set(["builder_cursor"]);
+
+export function buildBuddyWorldSyncRoute(match, clientId, messageType) {
+  if (!match || match.phase !== BUILD_BUDDY_PHASES.STAGE_PLAY) return "drop";
+  if (RUNNER_WORLD_MESSAGES.has(messageType)) {
+    return clientId === match.roles.runnerPlayerId ? "relay" : "drop";
+  }
+  if (BUILDER_WORLD_MESSAGES.has(messageType)) {
+    return clientId === match.roles.builderPlayerId ? "relay" : "drop";
+  }
+  return "reject";
 }
 
 export function applyBuildBuddyStageEventToMatch(match, clientId, message = {}, now = Date.now()) {

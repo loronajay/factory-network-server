@@ -11,7 +11,13 @@ import {
   applyBuildBuddyDisconnectToMatch,
   serializeBuildBuddyMatchState,
   serializeBuildBuddyStageStartMessage,
+  buildBuddyWorldSyncRoute,
 } from "./build-buddy-match-engine.mjs";
+
+const SERVER_AUTHORITY_ERROR = {
+  code: "SERVER_AUTHORITY",
+  message: "Build Buddy public matches are server-authoritative; clients cannot publish authoritative state or results.",
+};
 
 function broadcastBuildBuddyMatchState(lobby, messageType = "match_state") {
   if (!lobby?.buildBuddyMatch) return;
@@ -84,14 +90,28 @@ export const buildBuddyLobbyGame = {
       return { handled: true };
     }
 
-    if (messageType === "state_sync" || messageType === "stage_result" || messageType === "run_complete" || messageType === "stage_start") {
-      return {
-        handled: true,
-        error: {
-          code: "SERVER_AUTHORITY",
-          message: "Build Buddy public matches are server-authoritative; clients cannot publish authoritative state or results.",
-        },
-      };
+    // The Runner's world mirror and the Builder's cursor are relayed to the
+    // other chair, gated by role. Anything else that claims authority
+    // (stage_result, run_complete, stage_start, or a sync from the wrong chair)
+    // is refused; the server decides results and roles, never a client.
+    if (messageType === "state_sync" || messageType === "runner_state" || messageType === "builder_cursor") {
+      const route = buildBuddyWorldSyncRoute(lobby.buildBuddyMatch, clientId, messageType);
+      if (route === "relay") {
+        broadcastToLobby(lobby.roomCode, {
+          event: "message",
+          scope: "lobby",
+          messageType,
+          value,
+          senderId: clientId,
+          roomCode: lobby.roomCode,
+        }, clientId);
+        return { handled: true };
+      }
+      return route === "reject" ? { handled: true, error: SERVER_AUTHORITY_ERROR } : { handled: true };
+    }
+
+    if (messageType === "stage_result" || messageType === "run_complete" || messageType === "stage_start") {
+      return { handled: true, error: SERVER_AUTHORITY_ERROR };
     }
 
     return { handled: false };
