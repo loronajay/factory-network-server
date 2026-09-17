@@ -429,9 +429,9 @@ test("bots walk to cover on their own, and nobody can drive one from a socket", 
 });
 
 test("a round with CPU guests still replays deterministically from its seed", () => {
-  const a = createHideAndSeekMatchState(botLobby(4), 0);
-  const b = createHideAndSeekMatchState(botLobby(4), 0);
-  run(a, 30); run(b, 30);
+  const a = createHideAndSeekMatchState(botLobby(4), 1_000);
+  const b = createHideAndSeekMatchState(botLobby(4), 1_000);
+  run(a, 30); run(b, 30); // startAt 0 is falsy and falls back to Date.now(), which can differ between the two
   assert.deepEqual(serializeHideAndSeekMatch(a, 30_000), serializeHideAndSeekMatch(b, 30_000));
 });
 
@@ -440,4 +440,69 @@ test("a match without bots carries no driver and looks exactly as it did", () =>
   assert.equal(match.cpuDriver, null);
   assert.deepEqual(match.cpuIds, []);
   assert.ok(serializeHideAndSeekMatch(match).players.every((player) => player.cpu === false));
+});
+
+// The server advances at snapshot cadence — ~67ms at 15hz — and keeps one input per client. A tap on
+// E is two messages, press then release, and a normal tap is shorter than that window, so both used
+// to land between advances and the release overwrote the press before a tick ever read it. The
+// authority is edge-triggered on purpose (holding E must not strobe a door), so a press has to be
+// *latched* until a tick has seen it, and a held key must still fire exactly once.
+function standAtDoor(match, clientId) {
+  const body = match.state.bodies.find((entry) => entry.id === clientId);
+  const doors = match.engine.catalog.filter((item) => item.kind === "door" && !item.inCabin);
+  const door = doors.find((item) => item.floor === 1) || doors[0];
+  // Stand 1.2m in front of the door, looking straight at it. Yaw is measured so forward is (-sin, -cos).
+  const away = { x: 0, z: 1.2 };
+  const x = door.x + away.x, z = door.z + away.z;
+  const yaw = Math.atan2(-(door.x - x), -(door.z - z));
+  match.state = { ...match.state, bodies: match.state.bodies.map((entry) => (entry.id === clientId
+    ? { ...entry, x, y: door.y, z, yaw, floor: door.floor }
+    : entry)) };
+  return { door, yaw, body };
+}
+const idle = (yaw, interact = false, interactId = null) => ({ forward: 0, strafe: 0, yaw, crouch: false, sprint: false, light: false, interact, interactId });
+
+test("a press and its release arriving in the same advance still open the door once", () => {
+  const match = createHideAndSeekMatchState(lobby(), 1_000);
+  const hiderId = MEMBERS.find((id) => id !== match.seekerId);
+  const { door, yaw } = standAtDoor(match, hiderId);
+  advanceHideAndSeekMatch(match, 1_000 + 67);
+  assert.equal(match.state.fixtures.doors[door.id].open, false);
+
+  applyHideAndSeekInput(match, hiderId, idle(yaw, true, door.id));
+  applyHideAndSeekInput(match, hiderId, idle(yaw, false));
+  advanceHideAndSeekMatch(match, 1_000 + 134);
+  assert.equal(match.state.fixtures.doors[door.id].open, true, "the tap was dropped between two advances");
+
+  // Nothing is still pressed: more advances do not toggle it back.
+  advanceHideAndSeekMatch(match, 1_000 + 201);
+  advanceHideAndSeekMatch(match, 1_000 + 268);
+  assert.equal(match.state.fixtures.doors[door.id].open, true);
+});
+
+test("holding E across many advances fires exactly once, and a second tap fires again", () => {
+  const match = createHideAndSeekMatchState(lobby(), 1_000);
+  const hiderId = MEMBERS.find((id) => id !== match.seekerId);
+  const { door, yaw } = standAtDoor(match, hiderId);
+  advanceHideAndSeekMatch(match, 1_000 + 67);
+
+  applyHideAndSeekInput(match, hiderId, idle(yaw, true, door.id));
+  for (let n = 2; n <= 6; n += 1) {
+    applyHideAndSeekInput(match, hiderId, idle(yaw, true, door.id)); // heartbeat resends while held
+    advanceHideAndSeekMatch(match, 1_000 + 67 * n);
+  }
+  assert.equal(match.state.fixtures.doors[door.id].open, true, "a held key is one press");
+
+  // Release and press again inside one window: the authority must see the key go up, then down.
+  applyHideAndSeekInput(match, hiderId, idle(yaw, false));
+  applyHideAndSeekInput(match, hiderId, idle(yaw, true, door.id));
+  advanceHideAndSeekMatch(match, 1_000 + 67 * 7);
+  assert.equal(match.state.fixtures.doors[door.id].open, false, "the second tap closes it again");
+
+  // A press latched for a client that then drops is forgotten with the rest of its input.
+  applyHideAndSeekInput(match, hiderId, idle(yaw, false));
+  applyHideAndSeekInput(match, hiderId, idle(yaw, true, door.id));
+  applyHideAndSeekDisconnect(match, hiderId, 1_000 + 67 * 7);
+  advanceHideAndSeekMatch(match, 1_000 + 67 * 8);
+  assert.equal(match.state.fixtures.doors[door.id].open, false, "a dropped client's pending press must not fire");
 });

@@ -2,6 +2,7 @@ import { W, L } from '../config.js';
 import { createWorld } from './world.js';
 import { capPuck, hardContainPuck, sweptMalletContact, goalCrossing, capturePuck } from './collisions.js';
 import { updateCPU } from './cpu.js';
+import { getRival } from './rivals.js';
 import { updatePlayer } from '../input/player-motion.js';
 // Owns rigid-body updates. Input is sampled once per fixed tick; events are facts,
 // not presentation calls. An opponent controller can replace the CPU at this seam.
@@ -10,23 +11,28 @@ export function createSimulation(CANNON, match, { emit = () => {
     const { world, puckBody, player, cpu } = bodies;
     const metrics = { speed: 0, lastShot: 0, power: 0 };
     let elapsed = 0, lastPlayerBoost = -Infinity, lastCpuBoost = -Infinity, lastFire = -Infinity, lastSpeed = 0;
+    const puckFact = () => ({ speed: Math.hypot(puckBody.velocity.x, puckBody.velocity.z), position: { x: puckBody.position.x, y: puckBody.position.y, z: puckBody.position.z } });
     function strike(mallet, isPlayer) {
-        emit({ type: 'puck-hit', player: isPlayer });
         const previous = isPlayer ? lastPlayerBoost : lastCpuBoost;
-        if (elapsed - previous < (isPlayer || humanOpponent ? .075 : .09))
+        if (elapsed - previous < (isPlayer || humanOpponent ? .075 : .09)) {
+            emit({ type: 'puck-hit', player: isPlayer, ...puckFact() });
             return;
+        }
         if (isPlayer)
             lastPlayerBoost = elapsed;
         else
             lastCpuBoost = elapsed;
         const mv = mallet.body.velocity;
-        if (Math.hypot(mv.x, mv.z) < 2)
+        if (Math.hypot(mv.x, mv.z) < 2) {
+            emit({ type: 'puck-hit', player: isPlayer, ...puckFact() });
             return;
-        const coefficient = isPlayer || humanOpponent ? .42 : .25;
+        }
+        const coefficient = isPlayer || humanOpponent ? .42 : getRival(match.config.rivalId).strikePower;
         puckBody.velocity.x += mv.x * coefficient;
         puckBody.velocity.z += mv.z * coefficient;
         capPuck(puckBody);
         metrics.lastShot = Math.max(metrics.lastShot, Math.hypot(puckBody.velocity.x, puckBody.velocity.z));
+        emit({ type: 'puck-hit', player: isPlayer, ...puckFact() });
     }
     function collide(event) {
         if (match.state.phase !== 'live')
@@ -36,14 +42,14 @@ export function createSimulation(CANNON, match, { emit = () => {
         else if (event.body === cpu.body)
             strike(cpu, false);
         else if (Math.abs(event.contact?.getImpactVelocityAlongNormal() ?? Math.hypot(puckBody.velocity.x, puckBody.velocity.z)) > .01)
-            emit({ type: 'wall-hit' });
+            emit({ type: 'wall-hit', ...puckFact() });
     }
     puckBody.addEventListener('collide', collide);
     const playerStrike = () => strike(player, true), cpuStrike = () => strike(cpu, false);
     function contain() {
         const impacts = hardContainPuck(puckBody);
         for (let i = 0; i < impacts; i++)
-            emit({ type: 'wall-hit' });
+            emit({ type: 'wall-hit', ...puckFact() });
     }
     function stop() {
         for (const body of [puckBody, player.body, cpu.body]) {
@@ -102,7 +108,7 @@ export function createSimulation(CANNON, match, { emit = () => {
             player.target.x = Math.max(-W / 2 + .8, Math.min(W / 2 - .8, player.target.x + input.dx));
             player.target.z = Math.max(.8, Math.min(L / 2 - .85, player.target.z + input.dz));
             metrics.power = updatePlayer(player, input.keys, dt);
-            opponent(cpu, puckBody, match.config.cpuDifficulty, dt, random);
+            opponent(cpu, puckBody, match.config.rivalId, dt, random, { player });
             const p0x = puckBody.position.x, p0z = puckBody.position.z;
             const pl0x = player.body.position.x, pl0z = player.body.position.z;
             const cp0x = cpu.body.position.x, cp0z = cpu.body.position.z;

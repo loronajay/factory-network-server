@@ -4,7 +4,7 @@ import { normalizeSettings } from '../settings.js';
 export function createMatch({ config = {}, emit = () => {
 } } = {}) {
     const settings = normalizeSettings(config);
-    const state = { mode: 'cpu', screen: 'menu', phase: 'idle', playerScore: 0, cpuScore: 0, servingPlayer: true, remaining: 0 };
+    const state = { mode: 'cpu', screen: 'menu', garageFrom: null, phase: 'idle', playerScore: 0, cpuScore: 0, servingPlayer: true, remaining: 0 };
     function screen(value) {
         state.screen = value;
         emit({ type: 'screen', screen: value });
@@ -13,15 +13,49 @@ export function createMatch({ config = {}, emit = () => {
         Object.assign(state, { phase: 'faceoff', servingPlayer, remaining: .65 });
         emit({ type: 'round-reset', servingPlayer });
     }
+    function toMenu() {
+        Object.assign(state, { mode: 'cpu', matchId: '', opponentName: '', winner: null, reason: '', disconnected: false, phase: 'idle', playerScore: 0, cpuScore: 0, remaining: 0 });
+        screen('menu');
+        emit({ type: 'match-reset' });
+    }
     return {
         state, config: settings,
         online() {
             if (state.screen === 'menu')
                 screen('online');
         },
+        // The Garage is a menu destination, not a match state: no bodies move
+        // and no score exists while it is open. It is reachable from the main
+        // menu and from match setup, and leaving it returns to whichever asked
+        // — a player who went in from the setup screen to build a second
+        // design is not done choosing a rival and a venue.
+        garage() {
+            if (['menu', 'setup'].includes(state.screen)) {
+                state.garageFrom = state.screen;
+                screen('garage');
+            }
+        },
+        /** Leave the Garage for the screen that opened it. */
+        exitGarage() {
+            if (state.screen !== 'garage') return;
+            const back = state.garageFrom;
+            state.garageFrom = null;
+            if (back === 'setup') screen('setup');
+            else toMenu();
+        },
         setup() {
-            if (state.screen === 'menu')
+            if (state.screen === 'menu') {
+                state.mode = 'cpu';
                 screen('setup');
+            }
+        },
+        circuit() {
+            if (['menu', 'result', 'circuit'].includes(state.screen)) {
+                state.mode = 'campaign';
+                Object.assign(state, { phase: 'idle', playerScore: 0, cpuScore: 0, remaining: 0 });
+                screen('circuit');
+                emit({ type: 'match-reset' });
+            }
         },
         start() {
             if (state.mode === 'online') return;
@@ -30,11 +64,7 @@ export function createMatch({ config = {}, emit = () => {
             emit({ type: 'match-start' });
             faceoff(true);
         },
-        menu() {
-            Object.assign(state, { mode: 'cpu', matchId: '', opponentName: '', winner: null, reason: '', disconnected: false, phase: 'idle', playerScore: 0, cpuScore: 0, remaining: 0 });
-            screen('menu');
-            emit({ type: 'match-reset' });
-        },
+        menu: toMenu,
         pause() {
             if (state.mode === 'online') return;
             if (state.screen === 'playing')
@@ -55,7 +85,7 @@ export function createMatch({ config = {}, emit = () => {
                 state.phase = 'finished';
                 state.remaining = 0;
                 screen('result');
-                emit({ type: 'match-end', winner: state.playerScore > state.cpuScore ? 'player' : 'cpu' });
+                emit({ type: 'match-end', winner: state.playerScore > state.cpuScore ? 'player' : 'cpu', mode: state.mode, rivalId: settings.rivalId });
             }
             return true;
         },

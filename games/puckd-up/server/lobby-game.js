@@ -3,6 +3,8 @@ import { createAuthority } from './authority.js';
 import { createFixedStep } from '../scripts/core/fixed-step.js';
 import { isPlayerColor, PROTOCOL_VERSION, RECONNECT_MS, SNAPSHOT_HZ } from '../scripts/online/protocol.js';
 
+const TICKS_PER_SNAPSHOT = 240 / SNAPSHOT_HZ, IDLE_PUBLISH_MS = 250;
+
 // Game-specific adapter for the existing generic Factory Network lobby hooks.
 export function createLobbyGame({ CANNON, broadcast, update, now = Date.now, schedule = setInterval, cancel = clearInterval, makeAuthority = createAuthority }) {
     function publish(lobby) {
@@ -26,15 +28,22 @@ export function createLobbyGame({ CANNON, broadcast, update, now = Date.now, sch
     }
     function run(lobby) {
         stopTimer(lobby);
-        let last = now(), lastPublish = last;
-        const clock = createFixedStep(dt => lobby.puck.tick(dt));
+        let last = now(), lastPublish = last, ticks = 0, publishedTick = 0;
+        const clock = createFixedStep(dt => { lobby.puck.tick(dt); ticks++; });
+        // Snapshots are paced by simulated ticks, not by the timer's remainder:
+        // an 8 ms timer against a wall-clock interval alternates 32/40 ms gaps,
+        // and clients pace their playback off the tick numbers those carry.
+        // The idle heartbeat keeps a paused match (pre-start, reconnect grace)
+        // inside the clients' stall watchdog.
         lobby.puckTimer = schedule(() => {
             const current = now();
             lobby.puck.expire(current);
             if (current >= lobby.startAt) clock.advance(Math.max(0, current - Math.max(last, lobby.startAt)) / 1000);
             last = current;
-            if (current - lastPublish >= 1000 / SNAPSHOT_HZ) { lastPublish = current; publish(lobby); }
-        }, 8);
+            if (ticks - publishedTick >= TICKS_PER_SNAPSHOT || current - lastPublish >= IDLE_PUBLISH_MS) {
+                publishedTick = ticks; lastPublish = current; publish(lobby);
+            }
+        }, 4);
         lobby.puckTimer?.unref?.();
     }
     function begin(lobby) {

@@ -7,5 +7,5 @@ export const GOAL_CLEAR = Math.max(.25, GOAL / 2 - PUCK_R - .025);
 export const GOAL_CAPTURE_Z = L / 2 + .42;
 export const FIXED_DT = 1 / 240;
 export const PLAYER_MAX_SPEED = 38, PLAYER_TRACK_TIME = .022;
-export const ARENA_IDS = Object.freeze(['hyper_arcade', 'competition_circuit', 'park_jam', 'skyline_rooftop']);
-export const DEFAULT_SETTINGS = Object.freeze({ mode: 'cpu', playerColor: '#a14848', cpuDifficulty: 1, targetScore: 7, arenaId: 'hyper_arcade', muted: false });
+export const ARENA_IDS = Object.freeze(['hyper_arcade', 'park_jam', 'garage_club', 'boardwalk_bash', 'freight_yard', 'competition_circuit', 'skyline_rooftop', 'zero_g_arena']);
+export const DEFAULT_SETTINGS = Object.freeze({ mode: 'cpu', playerColor: '#a14848', cpuDifficulty: 1, rivalId: 'rookie', targetScore: 7, arenaId: 'hyper_arcade', muted: false });

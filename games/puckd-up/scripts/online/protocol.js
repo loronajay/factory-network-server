@@ -1,7 +1,14 @@
 // This version describes physics/input semantics, not the generic socket API.
-export const PROTOCOL_VERSION = 3;
-export const SNAPSHOT_HZ = 30;
+export const PROTOCOL_VERSION = 4;
+export const SNAPSHOT_HZ = 60;
 export const INPUT_HZ = 60;
+// Inputs are budgeted, not spaced: a WebSocket may hand the server two 60 Hz
+// commands in one tick after coalescing, and dropping the second would hold a
+// stale target. A seat earns one command per 240/INPUT_HZ ticks and may bank
+// INPUT_BURST of them, so the average stays 60 Hz while bunches are honoured.
+export const INPUT_BURST = 8;
+// Snapshot events older than this are not worth repeating on the wire.
+export const EVENT_WINDOW_TICKS = 240;
 export const RECONNECT_MS = 10000;
 export const isPlayerColor = value => typeof value === 'string' && /^#[0-9a-f]{6}$/.test(value);
 export const clampTarget = ({ x, z }) => ({ x: Math.max(-4.2, Math.min(4.2, x)), z: Math.max(.8, Math.min(7.15, z)) });

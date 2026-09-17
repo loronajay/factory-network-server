@@ -4,14 +4,15 @@ import assert from 'node:assert/strict';
 import { handleClientMessage, handleClientDisconnect } from '../../src/router.mjs';
 import { clients, lobbies, clientLobbies } from '../../src/state.mjs';
 import { lobbyGame } from '../registry.mjs';
+import { PROTOCOL_VERSION } from './scripts/online/protocol.js';
 
 function peer(id) {
     const ws = { OPEN: 1, readyState: 1, payloads: [], send(raw) { this.payloads.push(JSON.parse(raw)); } };
     clients.set(id, ws);
     return { ws, send: data => handleClientMessage(id, ws, JSON.stringify(data)) };
 }
-const request = { type: 'find_lobby', gameId: 'puckd-up', minPlayers: 2, maxPlayers: 2, settings: { protocolVersion: 3, targetScore: 7 } };
-const ready = { type: 'lobby_message', messageType: 'puck_ready', value: JSON.stringify({ protocolVersion: 3, ready: true, playerColor: '#c24b86' }) };
+const request = { type: 'find_lobby', gameId: 'puckd-up', minPlayers: 2, maxPlayers: 2, settings: { protocolVersion: PROTOCOL_VERSION, targetScore: 7 } };
+const ready = { type: 'lobby_message', messageType: 'puck_ready', value: JSON.stringify({ protocolVersion: PROTOCOL_VERSION, ready: true, playerColor: '#c24b86' }) };
 
 test('real registry starts only after both ready and never relays forged puck/results', () => {
     const a = peer('puck-a'), b = peer('puck-b');

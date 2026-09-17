@@ -184,6 +184,11 @@ export function createHideAndSeekMatchState(lobby, startAt) {
     // The latest input from each client. A tick reads it; it is never a queue, because a client that
     // stops sending should keep walking into the wall it was already walking into, not bank moves.
     inputs: new Map(),
+    // Presses no tick has read yet, keyed by client and holding the aim that rode with the press.
+    // The tick is edge-triggered on `interact`, and this loop advances at snapshot cadence — a tap
+    // is shorter than that window, so its release used to overwrite its press before any tick saw
+    // it. A latched press is handed to exactly one tick, then the held input speaks for itself.
+    presses: new Map(),
     cpuIds,
     cpuDriver,
     cpuBrains: cpuIds.map((id) => cpu.createHiderBrain(id)),
@@ -200,15 +205,27 @@ export function createHideAndSeekMatchState(lobby, startAt) {
 export function applyHideAndSeekInput(match, clientId, value) {
   if (!match || cpu.isCpuId(clientId)) return false;
   if (!match.state.bodies.some((body) => body.id === clientId)) return false;
-  match.inputs.set(clientId, sim.readInput(value));
+  const input = sim.readInput(value);
+  const previous = match.inputs.get(clientId);
+  if (input.interact && !previous?.interact) match.presses.set(clientId, input.interactId);
+  match.inputs.set(clientId, input);
   return true;
 }
 
-function currentInputs(match) {
+// The inputs for one tick. A latched press is spent here: the tick sees the key down with the aim
+// that came with it, and the next tick sees whatever the client last sent. If the previous tick
+// already had the key down — a release and a new press both arrived since — this tick shows it up,
+// so the authority's own edge can fire on the one after.
+function inputsForTick(match) {
   const inputs = {};
   for (const [id, input] of match.inputs) {
     // A body nobody is driving stands still rather than repeating its last stride into a corridor.
-    inputs[id] = match.connected.has(id) ? input : sim.NO_INPUT;
+    if (!match.connected.has(id)) { inputs[id] = sim.NO_INPUT; continue; }
+    if (!match.presses.has(id)) { inputs[id] = input; continue; }
+    const body = match.state.bodies.find((entry) => entry.id === id);
+    if (body?.interacting) { inputs[id] = { ...input, interact: false }; continue; }
+    inputs[id] = { ...input, interact: true, interactId: match.presses.get(id) };
+    match.presses.delete(id);
   }
   return inputs;
 }
@@ -224,8 +241,8 @@ export function advanceHideAndSeekMatch(match, now = Date.now()) {
   const ticks = Math.min(Math.max(0, owed), MAX_TICKS_PER_ADVANCE);
   if (owed > ticks) match.lastAdvanceAt = now;
   else match.lastAdvanceAt += ticks * STEP_SECONDS * 1000;
-  const inputs = currentInputs(match);
   for (let tick = 0; tick < ticks; tick += 1) {
+    const inputs = inputsForTick(match);
     // The bots read the world as it stands and press their keys for this tick, exactly where a
     // client's input would arrive. Their decisions never touch the state directly.
     if (match.cpuDriver) {
@@ -252,6 +269,7 @@ export function applyHideAndSeekDisconnect(match, clientId, now = Date.now()) {
   if (!match || !match.connected.has(clientId)) return false;
   match.connected.delete(clientId);
   match.inputs.set(clientId, sim.NO_INPUT);
+  match.presses.delete(clientId);
   // A dropped hider is left standing where they were — a free find, which is the honest consequence
   // and keeps the round winnable. A dropped seeker is not survivable for the round: nobody is left
   // hunting, so it settles the way a demon taking the seeker does.
