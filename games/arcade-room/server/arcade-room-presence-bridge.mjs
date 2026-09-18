@@ -14,7 +14,7 @@
 // readiness and a start, and every one of those is wrong for a room people
 // wander in and out of. The whole protocol is four client frames:
 //
-//   arcade_room_join  { roomId, identity: { playerId, displayName, avatarId }, pose }
+//   arcade_room_join  { roomId, sessionId, identity: { playerId, displayName, avatarId }, pose }
 //   arcade_room_pose  { x, z, yaw, moving, activity }
 //   arcade_room_emote { emote }
 //   arcade_room_leave
@@ -24,6 +24,15 @@
 // `arcade_room_pose` and `arcade_room_emote` (to everyone else in the arcade).
 // Disconnecting is a leave. A join from a client already standing in an arcade
 // moves it.
+//
+// Two things keep the roster honest when a socket dies without saying so (a
+// phone sleeping, a Wi-Fi drop, a proxy giving up): a join whose player AND
+// session are already standing in the arcade on another socket is a reconnect,
+// and the old member is retired on the spot rather than left as a clone; and a
+// member that has not been heard from in `STALE_MEMBER_MS` is swept out by the
+// heartbeat. The client keeps alive every couple of seconds, so a sweep only
+// ever catches a dead socket or a tab asleep for a long while — and that client
+// rejoins by itself on the `NOT_IN_ROOM` its next pose earns.
 
 const GAME_ID = "arcade-room";
 
@@ -35,6 +44,9 @@ export const MAX_ACTIVITY_LENGTH = 40;
 export const MAX_AVATAR_ID_LENGTH = 48;
 /** Poses arriving faster than this from one client are dropped, not relayed. */
 export const MIN_POSE_INTERVAL_MS = 40;
+/** A member silent for this long is gone, whatever its socket says; the client keeps alive every ~2 s. */
+export const STALE_MEMBER_MS = 20_000;
+export const MAX_SESSION_ID_LENGTH = 64;
 /** Well outside any room the cabinet can build; keeps NaN and absurd values off the wire. */
 const POSE_LIMIT = 100;
 const EMOTES = new Set(["wave", "cheer"]);
@@ -75,6 +87,10 @@ export function sanitizePose(pose, previous = null) {
     moving: source.moving === true,
     activity: cleanText(source.activity, MAX_ACTIVITY_LENGTH),
   };
+}
+
+export function sanitizeSessionId(value) {
+  return cleanText(value, MAX_SESSION_ID_LENGTH);
 }
 
 export function sanitizeEmote(value) {
@@ -140,11 +156,24 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
       return;
     }
     const identity = sanitizePresenceIdentity(data.identity);
+    const sessionId = sanitizeSessionId(data.sessionId);
+    // The same person on the same page load arriving on a new socket is a reconnect: the old
+    // socket is dead or dying, and its member would otherwise stand there as a clone until
+    // the transport noticed. Two tabs are two sessions and both may stay.
+    if (sessionId && identity.playerId) {
+      for (const other of [...members.values()]) {
+        if (other.clientId !== clientId && other.playerId === identity.playerId && other.sessionId === sessionId) {
+          leave(other.clientId, "replaced");
+        }
+      }
+    }
     const member = {
       clientId,
       ...identity,
+      sessionId,
       pose: sanitizePose(data.pose),
       lastPoseAt: 0,
+      lastHeardAt: now(),
     };
     const rejoining = members.has(clientId);
     members.set(clientId, member);
@@ -168,6 +197,7 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
       return;
     }
     const at = now();
+    member.lastHeardAt = at;
     if (at - member.lastPoseAt < MIN_POSE_INTERVAL_MS) return;
     member.lastPoseAt = at;
     member.pose = sanitizePose(data, member.pose);
@@ -176,10 +206,12 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
 
   function emote(clientId, data) {
     const roomId = clientRooms.get(clientId);
-    if (!roomId || !rooms.get(roomId)?.has(clientId)) {
+    const member = rooms.get(roomId)?.get(clientId);
+    if (!member) {
       emit(clientId, { event: "error", code: "NOT_IN_ROOM", message: "You are not in an arcade" });
       return;
     }
+    member.lastHeardAt = now();
     const name = sanitizeEmote(data.emote);
     if (!name) {
       emit(clientId, { event: "error", code: "BAD_MESSAGE", message: "Unknown emote" });
@@ -212,8 +244,15 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
     }
   }
 
-  // Presence has no clock: nothing advances between messages.
-  function tickActiveRooms() {}
+  // Presence has no simulation; the tick only sweeps out members nobody has heard from.
+  function tickActiveRooms() {
+    const cutoff = now() - STALE_MEMBER_MS;
+    for (const members of [...rooms.values()]) {
+      for (const member of [...members.values()]) {
+        if (member.lastHeardAt < cutoff) leave(member.clientId, "timeout");
+      }
+    }
+  }
 
   function ownsClient(clientId) {
     return clientRooms.has(clientId);

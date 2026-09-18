@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   MAX_MEMBERS_PER_ROOM,
   MIN_POSE_INTERVAL_MS,
+  STALE_MEMBER_MS,
   createArcadeRoomPresenceBridge,
   sanitizePose,
 } from "./server/arcade-room-presence-bridge.mjs";
@@ -31,10 +32,11 @@ function harness() {
   };
 }
 
-function join(h, clientId, roomId, identity = {}, pose = {}) {
+function join(h, clientId, roomId, identity = {}, pose = {}, sessionId = `session-${clientId}`) {
   h.bridge.handleClientMessage(clientId, {
     type: "arcade_room_join",
     roomId,
+    sessionId,
     identity: { playerId: `p-${clientId}`, displayName: clientId.toUpperCase(), avatarId: "avatar.hero-m", ...identity },
     pose,
   });
@@ -138,6 +140,56 @@ test("leaving and disconnecting both tell the arcade, and an empty arcade is for
   h.bridge.handleClientDisconnect("c_2", "close");
   assert.equal(h.bridge.ownsClient("c_2"), false);
   assert.equal(h.bridge.roomCount(), 0);
+});
+
+test("a reconnect (same player, same session, new socket) replaces the stale member instead of cloning it", () => {
+  const h = harness();
+  join(h, "c_watcher", "owner-1");
+  join(h, "c_old", "owner-1", { playerId: "p-same" }, { x: 1, z: 1 }, "session-phone");
+  h.clear();
+
+  // The phone's socket died silently; the page reconnects on a fresh clientId with the same session.
+  join(h, "c_new", "owner-1", { playerId: "p-same" }, { x: 4, z: 4 }, "session-phone");
+  assert.deepEqual(h.events("arcade_room_member_left", "c_watcher").map((e) => [e.clientId, e.reason]), [["c_old", "replaced"]]);
+  assert.equal(h.events("arcade_room_member_joined", "c_watcher")[0].member.clientId, "c_new");
+  assert.equal(h.bridge.ownsClient("c_old"), false);
+  const roster = h.bridge.roomMembers("owner-1").map((m) => m.clientId).sort();
+  assert.deepEqual(roster, ["c_new", "c_watcher"]);
+  assert.equal(h.events("arcade_room_joined", "c_new")[0].members.length, 1, "the joiner sees only the watcher, never its own ghost");
+  assert.equal("sessionId" in h.events("arcade_room_joined", "c_new")[0].members[0], false, "sessions are never published");
+
+  // Two tabs on one account are two sessions and both stay.
+  h.clear();
+  join(h, "c_tab2", "owner-1", { playerId: "p-same" }, {}, "session-laptop-tab-2");
+  assert.equal(h.events("arcade_room_member_left").length, 0);
+  assert.equal(h.bridge.roomMembers("owner-1").length, 3);
+
+  // Without a session id nothing is guessed at.
+  h.clear();
+  join(h, "c_nosession", "owner-1", { playerId: "p-same" }, {}, "");
+  assert.equal(h.events("arcade_room_member_left").length, 0);
+});
+
+test("a member nobody has heard from is swept out, and a live one is not", () => {
+  const h = harness();
+  join(h, "c_1", "owner-1");
+  join(h, "c_2", "owner-1");
+  h.clear();
+  h.advance(STALE_MEMBER_MS - 1000);
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_pose", x: 1, z: 1, yaw: 0 });
+  h.bridge.tickActiveRooms();
+  assert.equal(h.bridge.roomMembers("owner-1").length, 2, "nobody is stale yet");
+
+  h.advance(2000);
+  h.bridge.tickActiveRooms();
+  assert.deepEqual(h.bridge.roomMembers("owner-1").map((m) => m.clientId), ["c_1"], "the silent one is gone, the one who moved stays");
+  assert.deepEqual(h.events("arcade_room_member_left", "c_1").map((e) => [e.clientId, e.reason]), [["c_2", "timeout"]]);
+  assert.equal(h.bridge.ownsClient("c_2"), false);
+
+  // The swept client's next pose earns NOT_IN_ROOM, which is the cue to rejoin.
+  h.clear();
+  h.bridge.handleClientMessage("c_2", { type: "arcade_room_pose", x: 1, z: 1, yaw: 0 });
+  assert.equal(h.events("error", "c_2")[0].code, "NOT_IN_ROOM");
 });
 
 test("joining another arcade moves the client and the old arcade hears a leave", () => {
