@@ -141,6 +141,16 @@ players who disagree about how long the match is must never be paired. Because t
 the whole game, it needs no tick and no bridge — a lobby game and a pure engine are the entire
 server side.
 
+`arcade-room` is not a game at all: it is **presence** for the Factory's walkable arcade
+(`/room/`). A self-owning bridge with no matchmaking (`games/arcade-room/server/`) claims every
+`arcade_room_*` frame — `join { roomId, identity, pose }`, `pose`, `emote`, `leave` — keeps a
+roster per `roomId` (the arcade OWNER's player id, so owner and guests share one room), relays
+each member's pose to the others, and never simulates anyone: a pose is the sender's own
+business and is relayed as sent, sanitized to bounded numbers and dropped under 40 ms apart.
+It is a bridge rather than a lobby because a lobby has seats, readiness and a start, and every
+one of those is wrong for a room people wander in and out of. This is the shape for any future
+"same place at the same time" surface that has nothing to adjudicate.
+
 `mini-tactics` is a **config-only lobby game** (2-4 players, FFA +
 2v2 teams): its `lobbyGame` carries `lobbyLimits` only — no match engine — because
 the match runs as deterministic client lockstep over the generic lobby relay
@@ -255,7 +265,7 @@ All of the following live in `src/state.mjs` and are imported wherever needed.
 ## Tests
 
 `npm test` runs the colocated `.test.mjs` suites: `src/matchmaking.test.mjs`, `src/lobby.test.mjs`, `src/no-game-literals.test.mjs` (the game-agnostic guardrail), `games/registry.test.mjs` (strategy/settings/lobby resolution), `games/echo-duel/echo-duel.test.mjs`, `games/build-buddy/build-buddy.test.mjs`,
-`games/mini-hoops/mini-hoops.test.mjs` + `games/mini-hoops/mini-hoops-horse.test.mjs`, `games/hide-and-seek/hide-and-seek.test.mjs` + `games/hide-and-seek/mirror.test.mjs`, the three `games/circuit-siege/*.test.mjs` suites, the three `games/speed-demon/*.test.mjs` suites (replay/mirror guard, match engine, server bridge), and `games/shark-hall/mirror.test.mjs` + `games/shark-hall/shark-hall.test.mjs`.
+`games/mini-hoops/mini-hoops.test.mjs` + `games/mini-hoops/mini-hoops-horse.test.mjs`, `games/hide-and-seek/hide-and-seek.test.mjs` + `games/hide-and-seek/mirror.test.mjs`, the three `games/circuit-siege/*.test.mjs` suites, the three `games/speed-demon/*.test.mjs` suites (replay/mirror guard, match engine, server bridge), `games/shark-hall/mirror.test.mjs` + `games/shark-hall/shark-hall.test.mjs`, and `games/arcade-room/arcade-room.test.mjs` (the presence bridge).
 
 **`games/speed-demon/replay.test.mjs` is a mirror guard, not a unit test.** Its
 `shared/` folder is a *copy* of the cabinet's pure sim, and the failure mode of

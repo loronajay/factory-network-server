@@ -35,6 +35,7 @@ import { definition as hideAndSeek } from "./hide-and-seek/server/hide-and-seek.
 import { definition as puckdUp } from "./puckd-up/server/puckd-up.game.mjs";
 import { definition as sharkHall } from "./shark-hall/server/shark-hall.game.mjs";
 import { definition as birdDuty } from "./bird-duty/server/bird-duty.game.mjs";
+import { definition as arcadeRoom } from "./arcade-room/server/arcade-room.game.mjs";
 
 const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 
@@ -44,7 +45,7 @@ const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 let definitions = null;
 function allDefinitions() {
   if (!definitions) {
-    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse, hideAndSeek, puckdUp, sharkHall, birdDuty];
+    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse, hideAndSeek, puckdUp, sharkHall, birdDuty, arcadeRoom];
   }
   return definitions;
 }
