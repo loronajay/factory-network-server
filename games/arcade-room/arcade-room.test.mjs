@@ -6,7 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  CHAT_WINDOW_MS,
+  MAX_CHATS_PER_WINDOW,
+  MAX_CHAT_LENGTH,
   MAX_MEMBERS_PER_ROOM,
+  MIN_CHAT_INTERVAL_MS,
   MIN_POSE_INTERVAL_MS,
   STALE_MEMBER_MS,
   createArcadeRoomPresenceBridge,
@@ -126,6 +130,70 @@ test("an emote is relayed to the others and unknown ones are refused", () => {
   assert.equal(h.events("arcade_room_emote", "c_1").length, 0);
   h.bridge.handleClientMessage("c_1", { type: "arcade_room_emote", emote: "<script>" });
   assert.equal(h.events("error", "c_1")[0].code, "BAD_MESSAGE");
+});
+
+test("a chat line is relayed to the others with the sender's name, trimmed and bounded", () => {
+  const h = harness();
+  join(h, "c_1", "owner-1", { displayName: "Jay" });
+  join(h, "c_2", "owner-1");
+  join(h, "c_3", "owner-2");
+  h.clear();
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_chat", text: "  gg   everyone \n <b>hi</b>  " });
+  const heard = h.events("arcade_room_chat", "c_2");
+  assert.equal(heard.length, 1);
+  assert.deepEqual(heard[0], {
+    event: "arcade_room_chat",
+    roomId: "owner-1",
+    clientId: "c_1",
+    displayName: "Jay",
+    text: "gg everyone <b>hi</b>",
+    at: 1_000_000,
+    to: "c_2",
+  });
+  // The sender draws its own line locally; the other arcade never hears it.
+  assert.equal(h.events("arcade_room_chat", "c_1").length, 0);
+  assert.equal(h.events("arcade_room_chat", "c_3").length, 0);
+
+  h.clear();
+  h.advance(MIN_CHAT_INTERVAL_MS);
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_chat", text: "x".repeat(MAX_CHAT_LENGTH + 50) });
+  assert.equal(h.events("arcade_room_chat", "c_2")[0].text.length, MAX_CHAT_LENGTH);
+
+  h.clear();
+  h.advance(MIN_CHAT_INTERVAL_MS);
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_chat", text: "   " });
+  assert.equal(h.events("error", "c_1")[0].code, "BAD_MESSAGE");
+  assert.equal(h.events("arcade_room_chat", "c_2").length, 0);
+
+  h.bridge.handleClientMessage("c_9", { type: "arcade_room_chat", text: "hello?" });
+  assert.equal(h.events("error", "c_9")[0].code, "NOT_IN_ROOM");
+});
+
+test("chat is rate limited per member: a burst is dropped, not relayed, and the window recovers", () => {
+  const h = harness();
+  join(h, "c_1", "owner-1");
+  join(h, "c_2", "owner-1");
+  h.clear();
+  // Two lines inside the minimum interval: the second is dropped.
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_chat", text: "one" });
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_chat", text: "two" });
+  assert.deepEqual(h.events("arcade_room_chat", "c_2").map((m) => m.text), ["one"]);
+  assert.equal(h.events("error", "c_1")[0].code, "TOO_FAST");
+
+  // Spaced lines pass until the window budget is spent.
+  h.clear();
+  for (let i = 0; i < MAX_CHATS_PER_WINDOW + 2; i += 1) {
+    h.advance(MIN_CHAT_INTERVAL_MS);
+    h.bridge.handleClientMessage("c_1", { type: "arcade_room_chat", text: `line ${i}` });
+  }
+  assert.equal(h.events("arcade_room_chat", "c_2").length, MAX_CHATS_PER_WINDOW - 1);
+  assert.ok(h.events("error", "c_1").every((m) => m.code === "TOO_FAST"));
+
+  // Once the window has passed the member may speak again.
+  h.clear();
+  h.advance(CHAT_WINDOW_MS);
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_chat", text: "back" });
+  assert.equal(h.events("arcade_room_chat", "c_2")[0].text, "back");
 });
 
 test("leaving and disconnecting both tell the arcade, and an empty arcade is forgotten", () => {

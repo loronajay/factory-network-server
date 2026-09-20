@@ -12,16 +12,25 @@
 //
 // It is a self-owning bridge rather than a lobby because a lobby has seats,
 // readiness and a start, and every one of those is wrong for a room people
-// wander in and out of. The whole protocol is four client frames:
+// wander in and out of. The whole protocol is five client frames:
 //
 //   arcade_room_join  { roomId, sessionId, identity: { playerId, displayName, avatarId }, pose }
 //   arcade_room_pose  { x, z, yaw, moving, activity }
 //   arcade_room_emote { emote }
+//   arcade_room_chat  { text }
 //   arcade_room_leave
 //
-// and five server events: `arcade_room_joined` (to the joiner, with the whole
+// and six server events: `arcade_room_joined` (to the joiner, with the whole
 // roster), `arcade_room_member_joined`, `arcade_room_member_left`,
-// `arcade_room_pose` and `arcade_room_emote` (to everyone else in the arcade).
+// `arcade_room_pose`, `arcade_room_emote` and `arcade_room_chat` (to everyone
+// else in the arcade).
+//
+// Chat is a relay like everything else: a line goes out to the rest of the
+// arcade with the sender's name as the roster knows it, never as the frame
+// claims it. It is the one frame a person can flood on purpose, so it carries
+// two limits a pose does not — a minimum gap between lines and a budget per
+// window — and a line over either is refused with `TOO_FAST` rather than
+// silently dropped, so the sender's own box can say so.
 // Disconnecting is a leave. A join from a client already standing in an arcade
 // moves it.
 //
@@ -47,6 +56,12 @@ export const MIN_POSE_INTERVAL_MS = 40;
 /** A member silent for this long is gone, whatever its socket says; the client keeps alive every ~2 s. */
 export const STALE_MEMBER_MS = 20_000;
 export const MAX_SESSION_ID_LENGTH = 64;
+export const MAX_CHAT_LENGTH = 200;
+/** Two lines closer together than this from one member: the second is refused. */
+export const MIN_CHAT_INTERVAL_MS = 400;
+/** ...and no more than this many lines per member in any rolling window. */
+export const MAX_CHATS_PER_WINDOW = 8;
+export const CHAT_WINDOW_MS = 10_000;
 /** Well outside any room the cabinet can build; keeps NaN and absurd values off the wire. */
 const POSE_LIMIT = 100;
 const EMOTES = new Set(["wave", "cheer"]);
@@ -91,6 +106,10 @@ export function sanitizePose(pose, previous = null) {
 
 export function sanitizeSessionId(value) {
   return cleanText(value, MAX_SESSION_ID_LENGTH);
+}
+
+export function sanitizeChatText(value) {
+  return cleanText(value, MAX_CHAT_LENGTH);
 }
 
 export function sanitizeEmote(value) {
@@ -174,6 +193,8 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
       pose: sanitizePose(data.pose),
       lastPoseAt: 0,
       lastHeardAt: now(),
+      /** When this member's recent lines went out; the rate limit reads it. */
+      chatAts: [],
     };
     const rejoining = members.has(clientId);
     members.set(clientId, member);
@@ -220,12 +241,44 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
     emitToOthers(roomId, clientId, { event: "arcade_room_emote", roomId, clientId, emote: name });
   }
 
+  function chat(clientId, data) {
+    const roomId = clientRooms.get(clientId);
+    const member = rooms.get(roomId)?.get(clientId);
+    if (!member) {
+      emit(clientId, { event: "error", code: "NOT_IN_ROOM", message: "You are not in an arcade" });
+      return;
+    }
+    const at = now();
+    member.lastHeardAt = at;
+    const text = sanitizeChatText(data.text);
+    if (!text) {
+      emit(clientId, { event: "error", code: "BAD_MESSAGE", message: "Nothing to say" });
+      return;
+    }
+    member.chatAts = member.chatAts.filter((sentAt) => at - sentAt < CHAT_WINDOW_MS);
+    const last = member.chatAts[member.chatAts.length - 1] ?? -Infinity;
+    if (at - last < MIN_CHAT_INTERVAL_MS || member.chatAts.length >= MAX_CHATS_PER_WINDOW) {
+      emit(clientId, { event: "error", code: "TOO_FAST", message: "Slow down a little" });
+      return;
+    }
+    member.chatAts.push(at);
+    emitToOthers(roomId, clientId, {
+      event: "arcade_room_chat",
+      roomId,
+      clientId,
+      displayName: member.displayName,
+      text,
+      at,
+    });
+  }
+
   function handleClientMessage(clientId, data) {
     try {
       switch (String(data?.type || "")) {
         case "arcade_room_join": join(clientId, data); break;
         case "arcade_room_pose": pose(clientId, data); break;
         case "arcade_room_emote": emote(clientId, data); break;
+        case "arcade_room_chat": chat(clientId, data); break;
         case "arcade_room_leave": leave(clientId, "left"); break;
         default:
           emit(clientId, { event: "error", code: "UNKNOWN_TYPE", message: "Unknown message type" });
