@@ -64,7 +64,10 @@ export const MAX_CHATS_PER_WINDOW = 8;
 export const CHAT_WINDOW_MS = 10_000;
 /** Well outside any room the cabinet can build; keeps NaN and absurd values off the wire. */
 const POSE_LIMIT = 100;
-const EMOTES = new Set(["wave", "cheer"]);
+/** The body gestures and the four picture emotes the room's wheel sends (`js/arcade-room-emotes.mts`). */
+const EMOTES = new Set(["wave", "cheer", "heart", "middle-finger", "smile", "crying"]);
+/** The client cools an emote for a second; a little under that here so clock jitter never refuses a fair send. */
+export const MIN_EMOTE_INTERVAL_MS = 800;
 
 function cleanText(value, max) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
@@ -195,6 +198,7 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
       lastHeardAt: now(),
       /** When this member's recent lines went out; the rate limit reads it. */
       chatAts: [],
+      lastEmoteAt: -Infinity,
     };
     const rejoining = members.has(clientId);
     members.set(clientId, member);
@@ -232,12 +236,19 @@ export function createArcadeRoomPresenceBridge({ sendToClient, now = () => Date.
       emit(clientId, { event: "error", code: "NOT_IN_ROOM", message: "You are not in an arcade" });
       return;
     }
-    member.lastHeardAt = now();
+    const at = now();
+    member.lastHeardAt = at;
     const name = sanitizeEmote(data.emote);
     if (!name) {
       emit(clientId, { event: "error", code: "BAD_MESSAGE", message: "Unknown emote" });
       return;
     }
+    // A picture over a head is as floodable as a chat line: one per member per interval.
+    if (at - member.lastEmoteAt < MIN_EMOTE_INTERVAL_MS) {
+      emit(clientId, { event: "error", code: "TOO_FAST", message: "Slow down a little" });
+      return;
+    }
+    member.lastEmoteAt = at;
     emitToOthers(roomId, clientId, { event: "arcade_room_emote", roomId, clientId, emote: name });
   }
 

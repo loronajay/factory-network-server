@@ -11,6 +11,7 @@ import {
   MAX_CHAT_LENGTH,
   MAX_MEMBERS_PER_ROOM,
   MIN_CHAT_INTERVAL_MS,
+  MIN_EMOTE_INTERVAL_MS,
   MIN_POSE_INTERVAL_MS,
   STALE_MEMBER_MS,
   createArcadeRoomPresenceBridge,
@@ -130,6 +131,26 @@ test("an emote is relayed to the others and unknown ones are refused", () => {
   assert.equal(h.events("arcade_room_emote", "c_1").length, 0);
   h.bridge.handleClientMessage("c_1", { type: "arcade_room_emote", emote: "<script>" });
   assert.equal(h.events("error", "c_1")[0].code, "BAD_MESSAGE");
+});
+
+test("the four picture emotes relay too, and a member cannot fire them faster than the interval", () => {
+  const h = harness();
+  join(h, "c_1", "owner-1");
+  join(h, "c_2", "owner-1");
+  h.clear();
+  for (const emote of ["heart", "middle-finger", "smile", "crying"]) {
+    h.advance(MIN_EMOTE_INTERVAL_MS);
+    h.bridge.handleClientMessage("c_1", { type: "arcade_room_emote", emote });
+  }
+  assert.deepEqual(h.events("arcade_room_emote", "c_2").map((event) => event.emote), ["heart", "middle-finger", "smile", "crying"]);
+  h.clear();
+  h.advance(MIN_EMOTE_INTERVAL_MS - 1);
+  h.bridge.handleClientMessage("c_1", { type: "arcade_room_emote", emote: "heart" });
+  assert.equal(h.events("arcade_room_emote", "c_2").length, 0);
+  assert.equal(h.events("error", "c_1")[0].code, "TOO_FAST");
+  // Another member's clock is their own.
+  h.bridge.handleClientMessage("c_2", { type: "arcade_room_emote", emote: "smile" });
+  assert.equal(h.events("arcade_room_emote", "c_1")[0].emote, "smile");
 });
 
 test("a chat line is relayed to the others with the sender's name, trimmed and bounded", () => {
