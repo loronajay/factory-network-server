@@ -81,3 +81,32 @@ test("authoritative simulation calls a double touch and awards the opponent", ()
   assert.deepEqual(state.players.map((player) => player.score), [0, 1]);
   assert.ok(events.some((event) => event.type === "DOUBLE_TOUCH_FAULT" && event.playerId === "p1"));
 });
+
+test("every return adds the same fixed speed the cabinet adds, capped at the cabinet's max", () => {
+  assert.equal(CONFIG.hitSpeedIncrease, 32);
+  assert.equal(CONFIG.ballMaxSpeed, 675);
+  const state = createState(5, [
+    { playerId: "p1", displayName: "One" },
+    { playerId: "p2", displayName: "Two" },
+  ]);
+  startState(state);
+  state.phase = "PLAYING";
+  state.paddles[0].angle = 0;
+  state.paddles[1].angle = Math.PI;
+  const edge = CONFIG.arenaRadius - CONFIG.ballRadius - 2;
+  Object.assign(state.ball, {
+    x: edge, y: 0, vx: CONFIG.ballStartSpeed, vy: 0, speed: CONFIG.ballStartSpeed, lastTouchPlayerId: null,
+  });
+
+  stepState(state, [{ orbit: 0 }, { orbit: 0 }]);
+  const first = state.ball.speed;
+  assert.equal(first, CONFIG.ballStartSpeed + CONFIG.hitSpeedIncrease);
+
+  Object.assign(state.ball, { x: -edge, y: 0, vx: -first, vy: 0 });
+  stepState(state, [{ orbit: 0 }, { orbit: 0 }]);
+  assert.equal(state.ball.speed, first + CONFIG.hitSpeedIncrease);
+
+  Object.assign(state.ball, { x: edge, y: 0, vx: CONFIG.ballMaxSpeed, vy: 0, speed: CONFIG.ballMaxSpeed, lastTouchPlayerId: null });
+  stepState(state, [{ orbit: 0 }, { orbit: 0 }]);
+  assert.equal(state.ball.speed, CONFIG.ballMaxSpeed);
+});

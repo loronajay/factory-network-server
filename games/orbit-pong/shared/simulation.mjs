@@ -9,8 +9,8 @@ export const CONFIG = Object.freeze({
   paddleBraking: 18,
   ballRadius: 10,
   ballStartSpeed: 315,
-  hitMultiplier: 1.025,
-  ballMaxSpeed: 610,
+  hitSpeedIncrease: 32,
+  ballMaxSpeed: 675,
   paddleInfluence: 32,
   contactInfluence: 105,
   servePreviewTicks: 51,
@@ -168,7 +168,7 @@ function returnBall(state, hit, contact) {
   vx += tangent.x * tangentSpeed;
   vy += tangent.y * tangentSpeed;
   const direction = normalize(vx, vy, -normal.x, -normal.y);
-  const speed = Math.min(CONFIG.ballMaxSpeed, Math.max(state.ball.speed, Math.hypot(state.ball.vx, state.ball.vy)) * CONFIG.hitMultiplier);
+  const speed = Math.min(CONFIG.ballMaxSpeed, Math.max(state.ball.speed, Math.hypot(state.ball.vx, state.ball.vy)) + CONFIG.hitSpeedIncrease);
   const safeRadius = CONFIG.arenaRadius - CONFIG.ballRadius - 0.5;
   Object.assign(state.ball, {
     x: normal.x * safeRadius,
