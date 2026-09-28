@@ -277,13 +277,26 @@ export function withCheckpointGates(track) {
 }
 
 /**
+ * How deep the strip just past a gate line is. A pet can be moved across a
+ * line between its own steps — shoved by another racer, put back inside the
+ * fence — and never "cross" it; standing in this strip still counts, or that
+ * pet would owe the race a whole extra lap.
+ */
+export const GATE_DEPTH = 40;
+
+/**
  * True when a move from start to end crosses the checkpoint's gate line going
- * forwards. Half-open (behind -> on/ahead), so one crossing counts exactly once.
+ * forwards, or ends in the strip just past it. Checkpoints are taken in order,
+ * so a gate that already counted is never asked again.
  */
 export function crossesGate(start, end, checkpoint) {
   const gate = checkpoint.gate;
   const before = (start.x - checkpoint.x) * gate.tangentX + (start.y - checkpoint.y) * gate.tangentY;
   const after = (end.x - checkpoint.x) * gate.tangentX + (end.y - checkpoint.y) * gate.tangentY;
+  if (after >= 0 && after <= GATE_DEPTH) {
+    const lateral = (end.x - checkpoint.x) * -gate.tangentY + (end.y - checkpoint.y) * gate.tangentX;
+    if (Math.abs(lateral) <= gate.halfLength - GATE_OVERHANG) return true;
+  }
   if (!(before < 0 && after >= 0)) return false;
   const amount = before / (before - after);
   const x = start.x + (end.x - start.x) * amount;
