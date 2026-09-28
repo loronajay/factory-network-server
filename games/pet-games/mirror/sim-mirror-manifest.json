@@ -1,0 +1,19 @@
+{
+  "generator": "games/pet-games/tools/mirror-sim.mjs",
+  "files": {
+    "games/pet-games/shared/sim/levels.js": "4d9b1941fa5c8eda22162ae87463813184f7012a6040094dd6a16a052bfe1cb3",
+    "games/pet-games/shared/sim/rivals.js": "a607c27bbaae0674fb008a71ffab866d8be3ba2e290ad10807d053920fe727f5",
+    "games/barnyard-dash/scripts/sim/balance.js": "ed8fd2c3aa8593e2d430c2e4b9c8c2708fd2f98402e11b9805c4d21ed5bdee64",
+    "games/barnyard-dash/scripts/sim/courses.js": "538799bab7fa142980997ab516a06564cc190344d3d2eedf86ce1e57f3aad606",
+    "games/barnyard-dash/scripts/sim/cpu.js": "d1cb268f3e56bfc5bddd983358c9a8a66d33be4ded474fe3aecc0b44f75f5660",
+    "games/barnyard-dash/scripts/sim/net.js": "e0a51cec53d165e4a8c44bc21ce511450ba3ffaef05914508e0d05ef046d832c",
+    "games/barnyard-dash/scripts/sim/race.js": "137eae8786e47ca0d35c6b1c488961192e280f263b6965c3b98997546c5c73a9",
+    "games/barnyard-dash/scripts/sim/track.js": "7ae88e15d09e8f21c03a6f67a897e726c597c0bb0c46342709a15fb9ebd805ee",
+    "games/pondside-push/scripts/sim/balance.js": "2e7624cbdbb6e8e5937045013081911c8ee73f22ed7be133d8acc8ad2a24486a",
+    "games/pondside-push/scripts/sim/countdown.js": "8767ab8b78887868a8d024b62fd93c28d6c6d2185d381bd00d9e6312f1771c1f",
+    "games/pondside-push/scripts/sim/cpu.js": "0912f81a6a806bdd718695c2be634bbb45dc07a611f937860dba3d6830a58c41",
+    "games/pondside-push/scripts/sim/match.js": "6e0dc6c786ae5340eb933180f9399e4b4e61c2b8cc018686c726f5b6a4fc95ab",
+    "games/pondside-push/scripts/sim/net.js": "fe1100e162a241907bcf1b2e67ef6d8fa0a4ea8fe9a8213801121a88af957934",
+    "games/pondside-push/scripts/sim/session.js": "4345351f36fd2bcee092e7c897b196ba9dca1696ec9a53b588f56bca31cc4128"
+  }
+}

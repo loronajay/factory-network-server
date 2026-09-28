@@ -141,6 +141,21 @@ players who disagree about how long the match is must never be paired. Because t
 the whole game, it needs no tick and no bridge — a lobby game and a pure engine are the entire
 server side.
 
+`barnyard-dash` and `pondside-push` (the Pet Games, `games/pet-games/`) are two **server-authoritative
+lobby games over one kit** (`server/pet-lobby-kit.mjs`): a person names the pet they bring
+(`pet_profile`, sanitized to the farm's ranges and shown on the roster via `publicPlayerFields`),
+CPU guests fill only the chairs people left empty (`cpuCount` plus the new host-only `cpuLevel`
+setting, rivals drawn from the shared pool), and one interval per match advances the mirrored sim at
+60 Hz and publishes a snapshot every 50 ms. Clients send **sequenced input batches**; each person's
+queue is taken one input per tick (the last is held when it runs dry, old ones dropped if it runs
+long) and the snapshot acknowledges the last taken, which is what client prediction replays against.
+A suspended seat coasts through its grace window; a seat gone for good is retired (a DNF in a race,
+in the water for a brawl), and a finished match reopens the same room. `mirror/` is a byte-for-byte
+copy of the cabinets' `games/pet-games/shared/sim`, `games/barnyard-dash/scripts/sim` and
+`games/pondside-push/scripts/sim` **at the same relative paths** (so their cross-imports resolve
+unchanged), written by `javascript-games/games/pet-games/tools/mirror-sim.mjs` and guarded by
+`mirror.test.mjs`. Every outcome message is refused with `SERVER_AUTHORITY`.
+
 `arcade-room` is not a game at all: it is **presence** for the Factory's walkable arcade
 (`/room/`). A self-owning bridge with no matchmaking (`games/arcade-room/server/`) claims every
 `arcade_room_*` frame — `join { roomId, identity, pose }`, `pose`, `emote`, `leave` — keeps a

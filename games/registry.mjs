@@ -37,6 +37,8 @@ import { definition as sharkHall } from "./shark-hall/server/shark-hall.game.mjs
 import { definition as birdDuty } from "./bird-duty/server/bird-duty.game.mjs";
 import { definition as arcadeRoom } from "./arcade-room/server/arcade-room.game.mjs";
 import { definition as orbitPong } from "./orbit-pong/server/orbit-pong.game.mjs";
+import { definition as barnyardDash } from "./pet-games/server/barnyard-dash.game.mjs";
+import { definition as pondsidePush } from "./pet-games/server/pondside-push.game.mjs";
 
 const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 
@@ -46,7 +48,7 @@ const DEFAULT_MATCHMAKING = { strategy: "side-pair" };
 let definitions = null;
 function allDefinitions() {
   if (!definitions) {
-    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse, hideAndSeek, puckdUp, sharkHall, birdDuty, arcadeRoom, orbitPong];
+    definitions = [circuitSiege, echoDuel, buildBuddy, sumorai, creatureBattler, cockpitSwarm, miniTactics, tacticalArena, potOfGreed, questionableDecisions, speedDemon, yamBowling, miniHoops, miniHoopsHorse, hideAndSeek, puckdUp, sharkHall, birdDuty, arcadeRoom, orbitPong, barnyardDash, pondsidePush];
   }
   return definitions;
 }

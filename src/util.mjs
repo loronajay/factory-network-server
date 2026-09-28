@@ -91,6 +91,10 @@ export function sanitizeLobbySettings(settings = {}) {
     // not having asked for bots, and the game engine clamps it to the chairs actually left empty
     // when it seats the round. Games that never send it stay 0 on both sides and are unaffected.
     cpuCount: clampInt(settings.cpuCount, 0, 6, 0),
+    // How well those CPU seats play, as a small integer the game engine maps to its own levels.
+    // Host-only for the same reason `cpuCount` is: it decides nothing about who may play together.
+    // Games that never send it stay 1 on both sides and are unaffected.
+    cpuLevel: clampInt(settings.cpuLevel, 0, 2, 1),
   };
 }
 
