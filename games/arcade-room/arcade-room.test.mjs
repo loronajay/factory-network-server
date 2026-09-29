@@ -318,6 +318,15 @@ test("identity is trimmed and bounded, never trusted", () => {
   assert.equal(h.events("arcade_room_member_joined", "c_1")[1].member.displayName, "Player");
 });
 
+test("sanitizePose carries a rider's horse, and only a well-formed one", () => {
+  const riding = sanitizePose({ x: 1, z: 2, yaw: 0, moving: true, activity: "", mount: { speciesId: "pet.horse", paletteId: "palomino", gait: "run", y: 0.8, size: 1.05 } });
+  assert.deepEqual(riding.mount, { speciesId: "pet.horse", paletteId: "palomino", gait: "run", y: 0.8, size: 1.05 });
+  assert.equal(sanitizePose({ mount: { speciesId: "<script>", paletteId: "x" } }).mount, undefined);
+  assert.equal(sanitizePose({ mount: { speciesId: "pet.horse", paletteId: "bay", gait: "fly", y: 99, size: 9 } }).mount.gait, "idle");
+  assert.equal(sanitizePose({ mount: { speciesId: "pet.horse", paletteId: "bay", y: 99, size: 9 } }).mount.y, 4);
+  assert.equal("mount" in sanitizePose({ x: 1 }), false, "no horse, no key");
+});
+
 test("sanitizePose keeps a previous pose under garbage", () => {
   const previous = { x: 1, z: 2, yaw: 3, moving: true, activity: "" };
   assert.deepEqual(sanitizePose({ x: "no", moving: "yes", activity: 12 }, previous), { x: 1, z: 2, yaw: 3, moving: false, activity: "" });

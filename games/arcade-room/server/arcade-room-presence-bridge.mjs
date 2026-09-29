@@ -96,14 +96,37 @@ export function sanitizePresenceIdentity(identity) {
   };
 }
 
+const MOUNT_GAITS = new Set(["idle", "walk", "trot", "run", "jump"]);
+
+/**
+ * What a rider is sitting on (the farm's horse, FARM_RIDING_PLAN.md): the
+ * species and coat to draw, its gait, how high a jump has it, and its size.
+ * Presentation only — a client's horse, drawn under it by everyone else.
+ */
+export function sanitizeMount(mount) {
+  if (!mount || typeof mount !== "object") return null;
+  const speciesId = cleanText(mount.speciesId, 40);
+  const paletteId = cleanText(mount.paletteId, 24);
+  if (!/^pet\.[a-z0-9-]{1,32}$/.test(speciesId) || !/^[a-z0-9-]{1,24}$/.test(paletteId)) return null;
+  return {
+    speciesId,
+    paletteId,
+    gait: MOUNT_GAITS.has(mount.gait) ? mount.gait : "idle",
+    y: clamp(finite(mount.y, 0), -2, 4),
+    size: clamp(finite(mount.size, 1), 0.4, 1.3),
+  };
+}
+
 export function sanitizePose(pose, previous = null) {
   const source = pose && typeof pose === "object" ? pose : {};
+  const mount = sanitizeMount(source.mount);
   return {
     x: clamp(finite(source.x, previous?.x ?? 0), -POSE_LIMIT, POSE_LIMIT),
     z: clamp(finite(source.z, previous?.z ?? 0), -POSE_LIMIT, POSE_LIMIT),
     yaw: clamp(finite(source.yaw, previous?.yaw ?? 0), -1000, 1000),
     moving: source.moving === true,
     activity: cleanText(source.activity, MAX_ACTIVITY_LENGTH),
+    ...(mount ? { mount } : {}),
   };
 }
 

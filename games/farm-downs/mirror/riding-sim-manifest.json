@@ -1,0 +1,29 @@
+{
+  "generator": "tools/mirror-riding-sim.mjs",
+  "sources": {
+    "farm-ride-geometry.mts": "5d8f23fe13602b052007877ccf8f7bb9b0062c5a2bd26d18133285f5c87a78eb",
+    "farm-ride.mts": "33ca4f9dd77d1e11fd8d667e0a23b4760e7d29beed4b91a555ef92d4e8ed202c",
+    "farm-ride-profile.mts": "c388491d763374b9b18d982836d4173ecfe0d00f4e712115e716e75fe6a2878c",
+    "farm-riding-skill.mts": "6c0488d7edba8ad21f91c9ca866fec0b2b2f5074658533676a057634a389b1f9",
+    "farm-horse-riding.mts": "8812fa93d433918c67f3aa885020b010e136bb8e85cc6bca2015a24d0016b449",
+    "farm-pet-growth.mts": "a0731977527e0dddd4b63cc8a801d0f00544722cfb809e4a4f4bd33989f3b16d",
+    "downs-terrain.mts": "6a18a5aa2062aad6daf77e9d7d5dde0d90b1dce6c9a92de37b19046a21992969",
+    "downs-scene.mts": "06535524c867714625c050d953b8bf6d92bde0c20c4f0e78a2151c9b0e51af86",
+    "downs-course.mts": "c80aa54e58727db8ef1a3ea06741dc40276cb9d4c3d094003563b605c064ffde",
+    "downs-race.mts": "01ef0c3620ebb0d6f5d8f82bcd1554f1bbe142e3699c54c833dcdf857ae70218",
+    "downs-replay.mts": "2a785bd268155006ce80fc3c71ccf4034b6ac1da6ca8a2fc616c6d97652d0838"
+  },
+  "emitted": {
+    "farm-ride-geometry.mjs": "e92730705529942a7f659e0de94bae5e476cb3ad180bbb114ccf4d10e2638fcc",
+    "farm-ride.mjs": "a717efb9749e53b3efd5fef9c666b33ff007fc15df355fd3f6ed1d89b7ab8aa6",
+    "farm-ride-profile.mjs": "51cdf180778ce893bffcfb9e3d073dd9e9d50c7c478a8f9506dfddcd9ae15258",
+    "farm-riding-skill.mjs": "301e9f65577acb0efbb557f241ddb93c904f04967dd059dbbd64e12d7856af81",
+    "farm-horse-riding.mjs": "f652152dd9671592c98d1866c0c89fe172585c078ef6de0f359e32ead3169540",
+    "farm-pet-growth.mjs": "19af8bf5922dd9529fbeef332fb8738fad28b50cade913d78345a95f0d127d4f",
+    "downs-terrain.mjs": "7ab69d6f6b96cea800e25250347e3324dabdb88902564a0494b902a3713b004a",
+    "downs-scene.mjs": "0055f032fd118c3702e27332ce14098616c30415f9a4c933fb1b67992d255048",
+    "downs-course.mjs": "672cdd3f150a424091e094b9ef471ac05940ed1ed1c2e4fa4254aee78e940984",
+    "downs-race.mjs": "0a165701f60744f20614004a0cc61ceb00ed9dfc4581d2362009ed7bb499dc20",
+    "downs-replay.mjs": "bb6c5ab12675dbb6861f298f4dbaf6e6f9b600f9f218b96916cbb2a077c7a12b"
+  }
+}
