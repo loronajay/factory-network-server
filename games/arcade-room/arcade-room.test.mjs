@@ -327,6 +327,15 @@ test("sanitizePose carries a rider's horse, and only a well-formed one", () => {
   assert.equal("mount" in sanitizePose({ x: 1 }), false, "no horse, no key");
 });
 
+test("sanitizePose carries an angler's line, and only a well-formed one", () => {
+  const fishing = sanitizePose({ x: 1, z: 2, yaw: 0, moving: false, activity: "fishing", rod: { rodId: "rod.3", phase: "line", x: 4.5, z: -12 } });
+  assert.deepEqual(fishing.rod, { rodId: "rod.3", phase: "line", x: 4.5, z: -12 });
+  assert.equal(sanitizePose({ rod: { rodId: "<b>", phase: "line" } }).rod, undefined);
+  assert.equal(sanitizePose({ rod: { rodId: "rod.1", phase: "teleport" } }).rod, undefined);
+  assert.equal(sanitizePose({ rod: { rodId: "rod.1", phase: "cast", x: 1e9, z: -1e9 } }).rod.x, 100);
+  assert.equal("rod" in sanitizePose({ x: 1 }), false, "no line, no key");
+});
+
 test("sanitizePose keeps a previous pose under garbage", () => {
   const previous = { x: 1, z: 2, yaw: 3, moving: true, activity: "" };
   assert.deepEqual(sanitizePose({ x: "no", moving: "yes", activity: 12 }, previous), { x: 1, z: 2, yaw: 3, moving: false, activity: "" });

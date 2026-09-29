@@ -15,7 +15,7 @@
 // wander in and out of. The whole protocol is five client frames:
 //
 //   arcade_room_join  { roomId, sessionId, identity: { playerId, displayName, avatarId }, pose }
-//   arcade_room_pose  { x, z, yaw, moving, activity }
+//   arcade_room_pose  { x, z, yaw, moving, activity, mount?, rod? }
 //   arcade_room_emote { emote }
 //   arcade_room_chat  { text }
 //   arcade_room_leave
@@ -117,9 +117,30 @@ export function sanitizeMount(mount) {
   };
 }
 
+const ROD_PHASES = new Set(["charge", "cast", "line", "fight"]);
+
+/**
+ * An angler's line (the farm's Cove, FARM_FISHING_PLAN.md): which rod, what
+ * the line is doing, and where the lure sits on the water. Presentation only —
+ * the catch itself is the platform API's; this is so everyone else can SEE a
+ * person fishing.
+ */
+export function sanitizeRod(rod) {
+  if (!rod || typeof rod !== "object") return null;
+  const rodId = cleanText(rod.rodId, 24);
+  if (!/^rod\.[a-z0-9-]{1,16}$/.test(rodId) || !ROD_PHASES.has(rod.phase)) return null;
+  return {
+    rodId,
+    phase: rod.phase,
+    x: clamp(finite(rod.x, 0), -POSE_LIMIT, POSE_LIMIT),
+    z: clamp(finite(rod.z, 0), -POSE_LIMIT, POSE_LIMIT),
+  };
+}
+
 export function sanitizePose(pose, previous = null) {
   const source = pose && typeof pose === "object" ? pose : {};
   const mount = sanitizeMount(source.mount);
+  const rod = sanitizeRod(source.rod);
   return {
     x: clamp(finite(source.x, previous?.x ?? 0), -POSE_LIMIT, POSE_LIMIT),
     z: clamp(finite(source.z, previous?.z ?? 0), -POSE_LIMIT, POSE_LIMIT),
@@ -127,6 +148,7 @@ export function sanitizePose(pose, previous = null) {
     moving: source.moving === true,
     activity: cleanText(source.activity, MAX_ACTIVITY_LENGTH),
     ...(mount ? { mount } : {}),
+    ...(rod ? { rod } : {}),
   };
 }
 
